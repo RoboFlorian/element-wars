@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>2048元素战争</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="bg-layer" aria-hidden="true"></div>
+  <div class="fx-hurt-veil" id="fx-hurt-veil" aria-hidden="true"></div>
+
+  <div id="tutorial-overlay" class="tutorial-overlay" hidden>
+    <div class="tutorial-shade" id="tutorial-shade-top"></div>
+    <div class="tutorial-shade" id="tutorial-shade-left"></div>
+    <div class="tutorial-shade" id="tutorial-shade-right"></div>
+    <div class="tutorial-shade" id="tutorial-shade-bottom"></div>
+    <div class="tutorial-frame" id="tutorial-frame"></div>
+    <div class="tutorial-tip" id="tutorial-tip">
+      <p class="tutorial-step" id="tutorial-step">1 / 8</p>
+      <p class="tutorial-text" id="tutorial-text"></p>
+      <div class="tutorial-actions">
+        <button type="button" class="btn btn-tiny btn-primary" id="tutorial-next" hidden>下一步</button>
+        <button type="button" class="btn btn-tiny" id="tutorial-skip">跳过引导</button>
+      </div>
+    </div>
+  </div>
+
+  <main id="app">
+    <section id="menuscene" class="scene scene-menu" hidden>
+      <h1 class="logo menu-logo">
+        <span class="menu-logo-num">2048</span><span class="el-water">元</span><span class="el-fire">素</span><span class="el-earth">战</span><span class="el-wind">争</span>
+      </h1>
+      <button type="button" class="btn btn-primary menu-start" id="menu-start">开始游戏</button>
+    </section>
+
+    <section id="gamescene" class="scene scene-game" hidden>
+      <div class="game-wrap">
+        <div class="game-upper">
+          <div class="game-hud">
+            <button type="button" class="btn btn-tiny" id="game-menu">菜单</button>
+            <div class="score-card time-card">
+              <span>波次</span>
+              <strong id="game-wave">1</strong>
+            </div>
+            <button type="button" class="btn btn-tiny btn-primary" id="game-restart">重开</button>
+          </div>
+
+          <div class="monster-stage">
+            <div class="hp-row monster-hp">
+              <span id="monster-name">黑团团</span>
+              <div class="hp-bar"><i id="monster-hp-fill"></i></div>
+              <strong id="monster-hp-text">0</strong>
+            </div>
+            <div class="monster-circle" id="monster">
+              <img src="img/monster.png" alt="元素怪物">
+              <div class="monster-ring" aria-hidden="true"></div>
+            </div>
+            <p class="monster-element" id="monster-element">
+              <span class="element-badge" data-element="water">水</span>
+              <span>属性</span>
+            </p>
+            <p class="attack-line" id="monster-attack-line">
+              <span id="monster-attack-cd">还剩 0 次</span>
+              <span class="attack-dot">·</span>
+              <span>伤害 <strong id="monster-attack-dmg">0</strong></span>
+            </p>
+          </div>
+        </div>
+
+        <div class="game-lower" id="game-lower">
+          <div class="hp-row player-hp">
+            <span>你的体力</span>
+            <div class="hp-bar"><i id="player-hp-fill"></i></div>
+            <strong id="player-hp-text">100</strong>
+          </div>
+          <div class="board" id="game-board">
+            <span class="board-rim board-rim-top" aria-hidden="true"></span>
+            <span class="board-rim board-rim-right" aria-hidden="true"></span>
+            <span class="board-rim board-rim-bottom" aria-hidden="true"></span>
+            <span class="board-rim board-rim-left" aria-hidden="true"></span>
+            <div class="board-grid" id="game-grid"></div>
+            <div class="board-tiles" id="game-tiles"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="upgradescene" class="scene" hidden>
+      <div class="panel upgrade-panel">
+        <p class="eyebrow">击败奖励</p>
+        <h1 class="upgrade-title">选一张牌</h1>
+        <p class="tagline">三选一，效果马上生效</p>
+        <div class="card-row" id="upgrade-cards"></div>
+      </div>
+    </section>
+
+    <section id="resultscene" class="scene" hidden>
+      <div class="panel result-panel">
+        <p class="eyebrow" id="result-eyebrow">本局结束</p>
+        <h1 class="result-title" id="result-title">你倒下了</h1>
+        <p class="result-desc" id="result-desc">体力耗尽，怪物把你打停了。</p>
+
+        <div class="result-tile" id="result-tile">0:00</div>
+
+        <div class="result-stats">
+          <div>
+            <span>存活时间</span>
+            <strong id="result-time">0:00</strong>
+          </div>
+          <div>
+            <span>最高波次</span>
+            <strong id="result-best">1</strong>
+          </div>
+          <div>
+            <span>坚持波次</span>
+            <strong id="result-wave">1</strong>
+          </div>
+          <div>
+            <span>造成伤害</span>
+            <strong id="result-score">0</strong>
+          </div>
+        </div>
+
+        <div class="btn-stack">
+          <button type="button" class="btn btn-primary" id="result-primary">再来一局</button>
+          <button type="button" class="btn btn-ghost" id="result-secondary">返回菜单</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/elements.js"></script>
+  <script src="js/gameengine.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/tutorialguide.js"></script>
+  <script src="js/menuscene.js"></script>
+  <script src="js/gamescene.js"></script>
+  <script src="js/upgradescene.js"></script>
+  <script src="js/resultscene.js"></script>
+</body>
+</html>
