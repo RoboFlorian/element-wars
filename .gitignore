@@ -1,3 +1,5 @@
 .DS_Store
 Thumbs.db
-scripts/shot-*.png
+scripts/
+docs/
+.cursorrules

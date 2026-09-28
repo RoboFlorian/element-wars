@@ -6,9 +6,10 @@
   --panel: #ffffff;
   --fill: #ffffff;
   --shadow: none;
-  --cell: 88px;
-  --gap: 12px;
-  --pad: 14px;
+  --cell-w: 88px;
+  --cell-h: 88px;
+  --gap: 8px;
+  --pad: 10px;
   --move: 170ms;
 }
 
@@ -46,10 +47,36 @@ a {
   padding: 24px 16px;
 }
 
+body.is-playing {
+  overflow-x: hidden;
+}
+
 body.is-playing #app {
-  padding: 10px 12px;
+  padding: 0;
   min-height: 100dvh;
-  place-items: stretch center;
+  place-items: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+/* 游戏与祝福遮罩叠在同一格，避免双场景并排把布局撑开 */
+body.is-playing #app > .scene {
+  grid-area: 1 / 1;
+  justify-self: stretch;
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+body.is-playing #app > .scene-blessing {
+  width: 100%;
+  max-width: none;
+  justify-self: stretch;
+  align-self: stretch;
 }
 
 body.is-menu #app {
@@ -255,40 +282,249 @@ body.is-menu #app {
 }
 
 .scene-game {
-  width: min(520px, 100%);
-  height: calc(100dvh - 20px);
-  max-height: 920px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: 100dvh;
+  max-height: none;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .game-wrap {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
+  overflow-x: hidden;
 }
 
 .game-upper,
 .game-lower {
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
 }
 
 .game-upper {
   flex: 1 1 46%;
+  padding: 10px 12px 8px;
+  box-sizing: border-box;
 }
 
+/* 红线以下整片 = 玩家 UI 区，横线分成：属性 / 功能显示 / 功能按钮 */
 .game-lower {
   flex: 1 1 54%;
+  align-self: stretch;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  border-top: 2px solid #111;
+  background:
+    linear-gradient(180deg, #ebebeb 0%, #e4e4e4 40%, #dddddd 100%);
+  box-shadow: inset 0 8px 16px rgba(0, 0, 0, 0.04);
+  overflow-x: hidden;
+}
+
+.player-zone {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.player-zone-stats {
+  flex: 0 0 auto;
+  padding: 12px 16px;
+  border-bottom: 2px solid #111;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: 4px;
+}
+
+.settle-line {
+  margin: 0;
+  color: #111;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.settle-line.is-soon {
+  text-decoration: underline;
+}
+
+/* 视口裁切：三页横滑不得把整页撑宽 */
+.player-zone-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  padding: 8px 0;
+  border-bottom: 2px solid #111;
+  display: block;
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.stage-track {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  height: 100%;
+  width: 300%;
+  max-width: none;
+  will-change: transform;
+  /* 默认停在中间「战斗盘」，开局不要从祝福页滑过来 */
+  transform: translate3d(calc(-100% / 3), 0, 0);
+  transition: transform 280ms ease;
+  box-sizing: border-box;
+}
+
+.stage-panel {
+  flex: 0 0 calc(100% / 3);
+  width: calc(100% / 3);
+  max-width: calc(100% / 3);
+  min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stage-panel[data-panel="board"] {
+  padding: 0 8px;
+  align-items: stretch;
+}
+
+.stage-panel[data-panel="blessings"],
+.stage-panel[data-panel="items"] {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  overflow: auto;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.stage-empty {
+  margin: auto;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.owned-blessing-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(520px, 100%);
+  margin: 0 auto;
+  padding: 0;
+}
+
+.owned-blessing-list li {
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 2px solid #111;
+  border-radius: 14px;
+  background: #fff;
+  text-align: left;
+}
+
+.owned-blessing-list .rarity-dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--blessing-fill, #c8c8c8);
+  border: 1px solid #111;
+}
+
+.owned-blessing-list[data-rarity="white"] .rarity-dot,
+.owned-blessing-list li[data-rarity="white"] .rarity-dot { --blessing-fill: #c8c8c8; }
+.owned-blessing-list li[data-rarity="blue"] .rarity-dot { --blessing-fill: #2f80ed; }
+.owned-blessing-list li[data-rarity="purple"] .rarity-dot { --blessing-fill: #9b51e0; }
+.owned-blessing-list li[data-rarity="gold"] .rarity-dot { --blessing-fill: #e0a800; }
+
+.owned-blessing-list strong {
+  display: block;
+  font-size: 14px;
+  color: #111;
+}
+
+.owned-blessing-list span {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.player-zone-actions {
+  flex: 0 0 auto;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 8px;
+}
+
+.tab-btn {
+  appearance: none;
+  border: 2px solid #111;
+  border-radius: 14px;
+  padding: 10px 8px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.tab-btn.is-active {
+  background: #111;
+  color: #fff;
+}
+
+.tab-btn:hover,
+.tab-btn:focus-visible {
+  filter: brightness(0.97);
 }
 
 .game-lower .player-hp {
-  width: 100%;
+  width: min(520px, 100%);
   max-width: 100%;
-  margin: 0 0 8px;
-  padding: 0 4px;
+  margin: 0;
+  padding: 0 2px;
+}
+
+.game-lower .board {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
 }
 
 .game-hud {
@@ -322,6 +558,7 @@ body.is-menu #app {
 
 .time-card {
   flex: 1;
+  max-width: 140px;
 }
 
 .hp-row {
@@ -386,7 +623,6 @@ body.is-menu #app {
   overflow: hidden;
   background: #fff;
   border: 2px solid #111;
-  animation: monster-idle 2.4s ease-in-out infinite;
 }
 
 .monster-circle img {
@@ -453,6 +689,39 @@ body.is-menu #app {
   font-weight: 700;
 }
 
+.monster-curses {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 0;
+}
+
+.monster-curses[hidden] {
+  display: none !important;
+}
+
+.curse-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1.5px solid #111;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.curse-chip small {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
 .element-badge {
   display: inline-grid;
   place-items: center;
@@ -476,28 +745,72 @@ body.is-menu #app {
 .tile-value {
   position: relative;
   z-index: 1;
+  color: #fff;
+  -webkit-text-stroke: 2px #000;
+  paint-order: stroke fill;
+  text-shadow:
+    -1px 0 #000,
+    1px 0 #000,
+    0 -1px #000,
+    0 1px #000,
+    -1px -1px #000,
+    1px -1px #000,
+    -1px 1px #000,
+    1px 1px #000;
 }
 
 .tile-advantage {
   position: absolute;
-  top: 2px;
-  left: 4px;
+  top: 3px;
+  left: 3px;
   z-index: 2;
-  font-size: 12px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid #111;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
   font-weight: 900;
   line-height: 1;
   pointer-events: none;
   opacity: 0;
+  box-sizing: border-box;
+  color: #fff;
+  -webkit-text-stroke: 1px #000;
+  paint-order: stroke fill;
+  text-shadow:
+    -0.5px 0 #000,
+    0.5px 0 #000,
+    0 -0.5px #000,
+    0 0.5px #000;
 }
 
 .tile-advantage.is-up {
   opacity: 1;
-  color: #111;
+  background: #27ae60;
 }
 
 .tile-advantage.is-down {
   opacity: 1;
-  color: #111;
+  background: #eb5757;
+}
+
+/* ▲▼ 字形视觉中心不一致：分别微调，让箭头落在圆心 */
+.tile-advantage.is-up::before,
+.tile-advantage.is-down::before {
+  display: block;
+  line-height: 1;
+}
+
+.tile-advantage.is-up::before {
+  content: "▲";
+  transform: translateY(-1px);
+}
+
+.tile-advantage.is-down::before {
+  content: "▼";
+  transform: translateY(0.5px);
 }
 
 .attack-line.is-soon {
@@ -528,7 +841,9 @@ body.is-menu #app {
   flex: 0 0 auto;
 }
 
+/* 四边方向元素提示：暂时隐藏 */
 .board-rim {
+  display: none;
   position: absolute;
   z-index: 5;
   pointer-events: none;
@@ -617,14 +932,14 @@ body.is-menu #app {
   position: absolute;
   left: 0;
   top: 0;
-  width: var(--cell);
-  height: var(--cell);
+  width: var(--cell-w);
+  height: var(--cell-h);
   border-radius: 16px;
   display: grid;
   place-items: center;
   font-weight: 800;
   font-size: 32px;
-  color: #111;
+  color: #fff;
   --x: 0px;
   --y: 0px;
   transform: translate(var(--x), var(--y));
@@ -653,7 +968,7 @@ body.is-menu #app {
 
 .tile[data-element="earth"] {
   background: #f2c94c;
-  color: #111;
+  color: #fff;
   border-color: #9a7b12;
 }
 
@@ -680,6 +995,69 @@ body.is-menu #app {
   z-index: 3;
 }
 
+/* 每轮攻击元素的老虎机抽取动画，盖在战斗盘上 */
+.slot-overlay {
+  --slot-size: 56px;
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.85);
+  animation: slot-in 180ms ease;
+  transition: opacity 200ms ease;
+}
+
+.slot-overlay.is-leaving {
+  opacity: 0;
+}
+
+.slot-row {
+  display: flex;
+  gap: 10px;
+}
+
+.slot-reel {
+  width: var(--slot-size);
+  height: var(--slot-size);
+  overflow: hidden;
+  border: 2px solid #111;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.slot-reel.is-stopped {
+  animation: pop-scale 260ms ease;
+}
+
+.slot-strip {
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.12, 0.8, 0.22, 1);
+}
+
+.slot-cell {
+  height: var(--slot-size);
+  display: grid;
+  place-items: center;
+}
+
+.slot-cell .element-badge {
+  min-width: 36px;
+  height: 36px;
+  font-size: 18px;
+}
+
+@keyframes slot-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.tile.is-vanish {
+  animation: tile-vanish 220ms ease forwards;
+  pointer-events: none;
+}
+
 .tile.is-aimed {
   border-color: #111 !important;
   box-shadow: 0 0 0 3px #111;
@@ -703,31 +1081,174 @@ body.is-menu #app {
 
 .card-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr;
   gap: 10px;
   margin-top: 22px;
+}
+
+/* —— 祝福选择：深色遮罩 + 横排竖卡 —— */
+.scene-blessing {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 14px;
+  /* 压暗下方游戏，减少分心，仍能隐约看见棋盘 */
+  background: rgba(0, 0, 0, 0.82);
+  pointer-events: auto;
+}
+
+.scene-blessing[hidden] {
+  display: none !important;
+}
+
+.blessing-shell {
+  width: min(560px, 100%);
+  text-align: center;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.blessing-title {
+  font-size: 36px;
+  margin: 10px 0 8px;
+  font-weight: 800;
+}
+
+/* 白字黑边：标题粗描边，正文细描边，层次拉开 */
+.blessing-text {
+  color: #fff;
+  paint-order: stroke fill;
+}
+
+.blessing-shell .eyebrow.blessing-text {
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  -webkit-text-stroke: 1.5px #000;
+  text-shadow:
+    -1px 0 #000, 1px 0 #000, 0 -1px #000, 0 1px #000;
+}
+
+.blessing-shell .blessing-title.blessing-text {
+  color: #fff;
+  -webkit-text-stroke: 2.5px #000;
+  text-shadow:
+    -2px 0 #000, 2px 0 #000, 0 -2px #000, 0 2px #000,
+    -1.5px -1.5px #000, 1.5px -1.5px #000,
+    -1.5px 1.5px #000, 1.5px 1.5px #000;
+}
+
+.blessing-shell .tagline.blessing-text {
+  color: #fff;
+  font-size: 13px;
+  margin-bottom: 8px;
+  opacity: 0.92;
+  -webkit-text-stroke: 1.25px #000;
+  text-shadow:
+    -1px 0 #000, 1px 0 #000, 0 -1px #000, 0 1px #000;
+}
+
+.blessing-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 24px;
+  align-items: stretch;
+}
+
+.blessing-card {
+  appearance: none;
+  border: 2px solid #111;
+  border-radius: 20px;
+  padding: 20px 12px 22px;
+  min-height: 220px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+  text-align: center;
+  background: var(--blessing-fill, #c8c8c8);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  transition: transform 160ms ease, filter 160ms ease;
+}
+
+.blessing-card[data-rarity="white"] { --blessing-fill: #c8c8c8; }
+.blessing-card[data-rarity="blue"] { --blessing-fill: #2f80ed; }
+.blessing-card[data-rarity="purple"] { --blessing-fill: #9b51e0; }
+.blessing-card[data-rarity="gold"] { --blessing-fill: #e0a800; }
+
+.blessing-card:hover,
+.blessing-card:focus-visible {
+  transform: translateY(-4px);
+  filter: brightness(1.06);
+}
+
+/* 卡牌名：大、粗、重描边 */
+.blessing-card h3.blessing-text {
+  font-size: 22px;
+  line-height: 1.2;
+  margin: 0;
+  font-weight: 800;
+  -webkit-text-stroke: 2px #000;
+  text-shadow:
+    -1.5px 0 #000, 1.5px 0 #000, 0 -1.5px #000, 0 1.5px #000,
+    -1px -1px #000, 1px -1px #000, -1px 1px #000, 1px 1px #000;
+}
+
+/* 卡牌说明：小一号、细描边，一眼能分清主次 */
+.blessing-card p.blessing-text {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  font-weight: 500;
+  -webkit-text-stroke: 0.9px #000;
+  text-shadow:
+    -0.8px 0 #000, 0.8px 0 #000, 0 -0.8px #000, 0 0.8px #000;
+}
+
+@media (max-width: 420px) {
+  .blessing-card {
+    min-height: 190px;
+    padding: 16px 8px 18px;
+    gap: 12px;
+  }
+  .blessing-card h3.blessing-text { font-size: 18px; }
+  .blessing-card p.blessing-text { font-size: 11px; }
+  .blessing-cards { gap: 8px; }
 }
 
 .upgrade-card {
   appearance: none;
   border: 2px solid #111;
   border-radius: 22px;
-  padding: 16px 10px 18px;
-  min-height: 188px;
+  padding: 14px 16px;
+  min-height: 0;
   background: #fff;
   cursor: pointer;
   color: #111;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 54px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  row-gap: 4px;
   align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
+  text-align: left;
   transition: transform 160ms ease;
 }
 
 .upgrade-card:hover,
 .upgrade-card:focus-visible {
-  transform: translateY(-6px);
+  transform: translateY(-3px);
   background: #f7f7f7;
 }
 
@@ -742,20 +1263,23 @@ body.is-menu #app {
   color: #fff;
   background: #111;
   border: 2px solid #111;
+  grid-row: 1 / span 2;
 }
 
 .upgrade-card h3 {
   font-size: 18px;
+  margin: 0;
 }
 
 .upgrade-card p {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
+  margin: 0;
 }
 
 @media (max-width: 420px) {
-  .upgrade-card { min-height: 168px; padding: 12px 8px 14px; }
+  .upgrade-card { padding: 12px 14px; }
   .upgrade-card h3 { font-size: 16px; }
 }
 
@@ -873,14 +1397,14 @@ body.is-hurt .game-wrap {
   40% { transform: translate(var(--x), var(--y)) scale(1.18); }
 }
 
+@keyframes tile-vanish {
+  0% { transform: translate(var(--x), var(--y)) scale(1); opacity: 1; }
+  100% { transform: translate(var(--x), var(--y)) scale(0.2); opacity: 0; }
+}
+
 @keyframes pop-scale {
   0%, 100% { transform: scale(1); }
   40% { transform: scale(1.18); }
-}
-
-@keyframes monster-idle {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-8px) scale(1.03); }
 }
 
 @keyframes monster-wind {

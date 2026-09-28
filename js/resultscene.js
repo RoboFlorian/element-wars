@@ -1,5 +1,5 @@
 /**
- * 结算界面：体力没了之后出现，告诉你这局到了第几波。
+ * 结算界面：生命没了之后出现，告诉你这局到了第几波。
  */
 const ResultScene = {
   el: document.getElementById("resultscene"),
@@ -11,7 +11,7 @@ const ResultScene = {
     document.getElementById("result-title").textContent = isRecord ? "冲得更远了！" : "你倒下了";
     document.getElementById("result-desc").textContent = isRecord
       ? "这是目前到达的最高波次。还能再往前冲。"
-      : "体力耗尽，怪物把你打停了。先合成大数字，再点两下丢出去。";
+      : "生命耗尽，怪物把你打停了。场上方块越多、数字越大，每次结算打得越痛。";
     document.getElementById("result-tile").textContent = `第 ${wave} 波`;
     document.getElementById("result-time").textContent = App.formatTime(data.surviveSec || 0);
     document.getElementById("result-best").textContent = String(data.best || App.best);
@@ -33,4 +33,4 @@ const ResultScene = {
 
 App.register("result", ResultScene);
 
-window.Pink2048 = { App, MenuScene, GameScene, ResultScene, UpgradeScene, GameEngine, Elements, TutorialGuide };
+window.Pink2048 = { App, MenuScene, GameScene, ResultScene, BlessingScene, Blessings, GameEngine, Elements, Stats, TutorialGuide };

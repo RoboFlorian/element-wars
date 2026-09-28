@@ -1,13 +1,20 @@
 /**
  * 2048 的纯规则：只负责“这些方块往哪走、谁和谁合成”，不画界面。
- * 四个角落锁住，其余 12 格都能走。
+ * 行列数可变（默认 4×4，界面按战斗盘区域大小调用 setSize）；
+ * 仅祝福等机制可通过 extraLocked 封锁格子。
  */
 const ElementsLib = typeof Elements !== "undefined"
   ? Elements
   : require("./elements.js").Elements;
 
 const GameEngine = {
-  SIZE: 4,
+  ROWS: 4,
+  COLS: 4,
+
+  setSize(rows, cols) {
+    this.ROWS = Math.max(1, Math.floor(rows));
+    this.COLS = Math.max(1, Math.floor(cols));
+  },
 
   vectors: {
     left: { r: 0, c: -1 },
@@ -16,23 +23,30 @@ const GameEngine = {
     down: { r: 1, c: 0 }
   },
 
-  /** 只有四个角锁住 */
+  /** 祝福等机制额外封锁的格子：Set<"row,col"> */
+  extraLocked: null,
+  /** 诅咒「封堵」冻结的格子：Set<"row,col">，换怪时清空 */
+  curseFrozen: null,
+
   isPlayable(row, col) {
-    if (row < 0 || col < 0 || row >= this.SIZE || col >= this.SIZE) return false;
-    const corner =
-      (row === 0 && col === 0) ||
-      (row === 0 && col === this.SIZE - 1) ||
-      (row === this.SIZE - 1 && col === 0) ||
-      (row === this.SIZE - 1 && col === this.SIZE - 1);
-    return !corner;
+    if (row < 0 || col < 0 || row >= this.ROWS || col >= this.COLS) return false;
+    if (this.extraLocked && this.extraLocked.has(`${row},${col}`)) return false;
+    if (this.curseFrozen && this.curseFrozen.has(`${row},${col}`)) return false;
+    return true;
+  },
+
+  playableCount() {
+    let count = 0;
+    for (let row = 0; row < this.ROWS; row += 1) {
+      for (let col = 0; col < this.COLS; col += 1) {
+        if (this.isPlayable(row, col)) count += 1;
+      }
+    }
+    return count;
   },
 
   inBounds(row, col) {
     return this.isPlayable(row, col);
-  },
-
-  playableCount() {
-    return 12;
   },
 
   tileAt(tiles, row, col) {
@@ -69,8 +83,8 @@ const GameEngine = {
       justMerged: false
     }));
 
-    const rows = [0, 1, 2, 3];
-    const cols = [0, 1, 2, 3];
+    const rows = Array.from({ length: this.ROWS }, (_, i) => i);
+    const cols = Array.from({ length: this.COLS }, (_, i) => i);
     if (dir === "right") cols.reverse();
     if (dir === "down") rows.reverse();
 
@@ -132,7 +146,7 @@ const GameEngine = {
   },
 
   gridValues(tiles) {
-    const grid = Array.from({ length: this.SIZE }, () => Array(this.SIZE).fill(0));
+    const grid = Array.from({ length: this.ROWS }, () => Array(this.COLS).fill(0));
     tiles.forEach((tile) => {
       if (!tile.removed) grid[tile.row][tile.col] = tile.value;
     });

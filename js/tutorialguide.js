@@ -1,10 +1,13 @@
 /**
- * 新手引导：全屏半透明黑遮罩，只留出当前要操作的地方。
- * 玩家按提示做对一步，就进入下一步；做完后恢复正常游戏。
+ * 试玩关卡：第一次开始游戏时进入的独立练习关。
+ * 带分步指引；打完或跳过后记入本地，之后不会再进。
+ * 试玩不计入正式波次与纪录。
  */
 const TutorialGuide = {
+  /** 总开关：false 时不进试玩、不显示任何引导（代码保留，方便以后打开） */
+  ENABLED: false,
+  KEY: "elementwar-trial-done",
   active: false,
-  played: false,
   stepIndex: 0,
   targetEl: null,
   pad: 8,
@@ -12,103 +15,123 @@ const TutorialGuide = {
   STEPS: [
     {
       id: "move",
-      text: "先滑动一次：用方向键、WASD，或在棋盘上滑。四个角是锁住的，其余格子都能用。",
+      text: "【试玩关】先滑动一次。数字相同的方块撞在一起会合成更大的数字。",
       focus: "board",
       wait: "move",
       tipPos: "top"
     },
     {
       id: "dirs",
-      text: "看棋盘四边颜色——上绿=风，下黄=土，左蓝=水，右红=火。成功往哪边滑，原来的数字块就变成那种颜色；新冒出来的白块还没有属性。",
+      text: "每次结算伤害都带一种元素：每 4 次攻击里，水、火、土、风各出现一次，顺序随机。",
       focus: "board",
       wait: "next",
       tipPos: "top"
     },
     {
       id: "monster",
-      text: "看这里：这行就是怪物的属性（水/火/土/风）。用克制它的元素打出去，伤害是 2 倍；被它克制则只有半倍。",
+      text: "看这里：这个圆标就是怪物的属性（水/火/土/风）。每隔几个回合，场上所有方块的数字会加起来打它一次；这次攻击的元素克制它，伤害 2 倍，被它克制则只有半倍。",
       focus: "monster-element",
       wait: "next",
       tipPos: "bottom"
     },
     {
       id: "advantage",
-      text: "格子左上角：▲ 表示克制，▼ 表示被克制；白色块没有属性，也没有箭头。想染色，就再往对应颜色的边成功滑一次（滑不动不算）。",
+      text: "方块的颜色就是下一次攻击的元素；左上角 ▲ 表示克制怪物，▼ 表示被克制。",
       focus: "board",
       wait: "next",
       tipPos: "top"
     },
     {
       id: "actions",
-      text: "这里是怪物出手倒计时：你每成功移动或打出一次，次数就减 1；减到 0 它会反击。",
+      text: "这里是怪物出手倒计时：你每完成一次滑动或消除（一个回合），次数就减 1；减到 0 它会反击。试玩里怪物先不会真的打你。",
       focus: "attack",
       wait: "next",
       tipPos: "bottom"
     },
     {
       id: "select",
-      text: "点一下某个数字块，选中它（会出现加粗描边）。合成只把数字变大，属性跟滑动方向走。",
+      text: "点一下某个数字块，选中它（会出现加粗描边）。",
       focus: "tile",
       wait: "select",
       tipPos: "top"
     },
     {
-      id: "launch",
-      text: "再点同一块，把它丢出去打怪。伤害看数字和当前颜色（属性）。这是练习：怪物不掉血，结束后会重开第一关。",
+      id: "eliminate",
+      text: "再点同一块，把它消除，腾出格子。消除也算一个回合。试玩里怪物不掉血，分数也不算进正式纪录。",
       focus: "tile",
-      wait: "launch",
+      wait: "eliminate",
       tipPos: "top"
     },
     {
       id: "done",
-      text: "引导结束。记住：先看怪物属性，再决定往哪滑（换颜色），然后合成或打出。点下面开始正式游戏。",
+      text: "试玩关结束。接下来进入正式游戏，从第 1 波重新开始。",
       focus: "board",
       wait: "next",
       tipPos: "top"
     }
   ],
 
+  isDone() {
+    return localStorage.getItem(this.KEY) === "1";
+  },
+
+  markDone() {
+    localStorage.setItem(this.KEY, "1");
+  },
+
   isActive() {
     return this.active;
   },
 
-  /** 引导中先不让怪物按次数反击，避免打断学习 */
+  /** 试玩中不让怪物按次数反击 */
   blocksCombat() {
-    return this.active;
+    return this.active || (typeof GameScene !== "undefined" && GameScene.trial);
   },
 
   shouldStart(data) {
-    if (data && data.forceTutorial) return true;
-    if (data && data.skipTutorial) return false;
-    return !this.played;
+    if (!this.ENABLED) return false;
+    if (data && (data.forceTutorial || data.forceTrial || data.trial)) return true;
+    if (data && (data.skipTutorial || data.skipTrial)) return false;
+    return !this.isDone();
   },
 
   start() {
-    if (this.active) return;
-    this.played = true;
+    if (!this.ENABLED || this.active) return;
     this.cacheDom();
     this.active = true;
     this.stepIndex = 0;
+    if (typeof GameScene !== "undefined") GameScene.trial = true;
     this.overlay.hidden = false;
     document.body.classList.add("is-tutorial");
     this.bind();
     this.showStep();
+    if (typeof GameScene !== "undefined" && GameScene.updateHud) GameScene.updateHud();
   },
 
   end() {
-    this.dismiss(true);
+    this.finishTrial();
   },
 
+  /** 中途离开菜单：不标记完成，下次还能进试玩 */
   dismiss(markComplete) {
-    const shouldReset = markComplete && this.active;
     this.active = false;
     this.targetEl = null;
     if (this.overlay) this.overlay.hidden = true;
     document.body.classList.remove("is-tutorial");
     this.unbind();
-    // 练习不计入正式对局：结束或跳过后，第一关重新开
-    if (shouldReset && typeof GameScene !== "undefined" && GameScene.newGame) {
-      GameScene.newGame();
+    if (markComplete) this.markDone();
+  },
+
+  /** 试玩完成或跳过：记一次，再开正式第 1 波 */
+  finishTrial() {
+    if (!this.active && !(typeof GameScene !== "undefined" && GameScene.trial)) {
+      this.markDone();
+      return;
+    }
+    this.dismiss(true);
+    if (typeof GameScene !== "undefined") GameScene.trial = false;
+    if (typeof App !== "undefined") {
+      App.show("game", { fresh: true, skipTrial: true });
     }
   },
 
@@ -128,10 +151,11 @@ const TutorialGuide = {
 
   bind() {
     this.onNext = () => this.advance();
-    this.onSkip = () => this.end();
+    this.onSkip = () => this.finishTrial();
     this.onResize = () => this.refreshFocus();
     this.nextBtn.onclick = this.onNext;
     this.skipBtn.onclick = this.onSkip;
+    if (this.skipBtn) this.skipBtn.textContent = "跳过试玩";
     window.addEventListener("resize", this.onResize);
   },
 
@@ -148,13 +172,13 @@ const TutorialGuide = {
   showStep() {
     const step = this.current();
     if (!step) {
-      this.end();
+      this.finishTrial();
       return;
     }
     this.stepEl.textContent = `${this.stepIndex + 1} / ${this.STEPS.length}`;
     this.textEl.textContent = step.text;
     this.nextBtn.hidden = step.wait !== "next";
-    this.nextBtn.textContent = step.id === "done" ? "开始正式游戏" : "下一步";
+    this.nextBtn.textContent = step.id === "done" ? "进入正式游戏" : "下一步";
     this.tip.classList.toggle("is-top", step.tipPos === "top");
     this.refreshFocus();
   },
@@ -184,7 +208,6 @@ const TutorialGuide = {
     }
     const rect = el.getBoundingClientRect();
     const radius = getComputedStyle(el).borderRadius || "16px";
-    // 属性这一行比较扁，多留一点边，方便看清
     const pad = step.focus === "monster-element" ? 14 : this.pad;
     this.setHole(rect.left, rect.top, rect.width, rect.height, radius, pad);
   },
@@ -217,7 +240,7 @@ const TutorialGuide = {
   advance() {
     this.stepIndex += 1;
     if (this.stepIndex >= this.STEPS.length) {
-      this.end();
+      this.finishTrial();
       return;
     }
     this.showStep();

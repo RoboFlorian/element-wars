@@ -24,7 +24,7 @@
       <p class="tutorial-text" id="tutorial-text"></p>
       <div class="tutorial-actions">
         <button type="button" class="btn btn-tiny btn-primary" id="tutorial-next" hidden>下一步</button>
-        <button type="button" class="btn btn-tiny" id="tutorial-skip">跳过引导</button>
+        <button type="button" class="btn btn-tiny" id="tutorial-skip">跳过试玩</button>
       </div>
     </div>
   </div>
@@ -61,8 +61,8 @@
             </div>
             <p class="monster-element" id="monster-element">
               <span class="element-badge" data-element="water">水</span>
-              <span>属性</span>
             </p>
+            <p class="monster-curses" id="monster-curses" hidden></p>
             <p class="attack-line" id="monster-attack-line">
               <span id="monster-attack-cd">还剩 0 次</span>
               <span class="attack-dot">·</span>
@@ -72,29 +72,52 @@
         </div>
 
         <div class="game-lower" id="game-lower">
-          <div class="hp-row player-hp">
-            <span>你的体力</span>
-            <div class="hp-bar"><i id="player-hp-fill"></i></div>
-            <strong id="player-hp-text">100</strong>
+          <div class="player-zone player-zone-stats" id="player-zone-stats">
+            <div class="hp-row player-hp">
+              <span>你的生命</span>
+              <div class="hp-bar"><i id="player-hp-fill"></i></div>
+              <strong id="player-hp-text">100</strong>
+            </div>
+            <p class="settle-line" id="settle-line">再过 <strong id="settle-left">3</strong> 回合结算伤害</p>
           </div>
-          <div class="board" id="game-board">
-            <span class="board-rim board-rim-top" aria-hidden="true"></span>
-            <span class="board-rim board-rim-right" aria-hidden="true"></span>
-            <span class="board-rim board-rim-bottom" aria-hidden="true"></span>
-            <span class="board-rim board-rim-left" aria-hidden="true"></span>
-            <div class="board-grid" id="game-grid"></div>
-            <div class="board-tiles" id="game-tiles"></div>
+
+          <div class="player-zone player-zone-stage" id="player-zone-stage">
+            <div class="stage-track" id="stage-track">
+              <div class="stage-panel" data-panel="blessings" id="panel-blessings">
+                <p class="stage-empty" id="panel-blessings-empty">还没有获得祝福</p>
+                <ul class="owned-blessing-list" id="owned-blessing-list"></ul>
+              </div>
+              <div class="stage-panel is-active" data-panel="board" id="panel-board">
+                <div class="board" id="game-board">
+                  <span class="board-rim board-rim-top" aria-hidden="true"></span>
+                  <span class="board-rim board-rim-right" aria-hidden="true"></span>
+                  <span class="board-rim board-rim-bottom" aria-hidden="true"></span>
+                  <span class="board-rim board-rim-left" aria-hidden="true"></span>
+                  <div class="board-grid" id="game-grid"></div>
+                  <div class="board-tiles" id="game-tiles"></div>
+                </div>
+              </div>
+              <div class="stage-panel" data-panel="items" id="panel-items">
+                <p class="stage-empty">暂无道具</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="player-zone player-zone-actions" id="player-zone-actions">
+            <button type="button" class="tab-btn" data-tab="blessings" id="tab-blessings">祝福</button>
+            <button type="button" class="tab-btn is-active" data-tab="board" id="tab-board">战斗盘</button>
+            <button type="button" class="tab-btn" data-tab="items" id="tab-items">道具</button>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="upgradescene" class="scene" hidden>
-      <div class="panel upgrade-panel">
-        <p class="eyebrow">击败奖励</p>
-        <h1 class="upgrade-title">选一张牌</h1>
-        <p class="tagline">三选一，效果马上生效</p>
-        <div class="card-row" id="upgrade-cards"></div>
+    <section id="blessingscene" class="scene scene-blessing" hidden>
+      <div class="blessing-shell">
+        <p class="eyebrow blessing-text" id="blessing-eyebrow">击败奖励</p>
+        <h1 class="blessing-title blessing-text" id="blessing-title">选一个祝福</h1>
+        <p class="tagline blessing-text" id="blessing-tagline">三选一，效果马上生效</p>
+        <div class="blessing-cards" id="blessing-cards"></div>
       </div>
     </section>
 
@@ -102,7 +125,7 @@
       <div class="panel result-panel">
         <p class="eyebrow" id="result-eyebrow">本局结束</p>
         <h1 class="result-title" id="result-title">你倒下了</h1>
-        <p class="result-desc" id="result-desc">体力耗尽，怪物把你打停了。</p>
+        <p class="result-desc" id="result-desc">生命耗尽，怪物把你打停了。</p>
 
         <div class="result-tile" id="result-tile">0:00</div>
 
@@ -134,12 +157,16 @@
   </main>
 
   <script src="js/elements.js"></script>
+  <script src="js/stats.js"></script>
+  <script src="js/blessings.js"></script>
+  <script src="js/curses.js"></script>
+  <script src="js/monsters.js"></script>
   <script src="js/gameengine.js"></script>
   <script src="js/app.js"></script>
   <script src="js/tutorialguide.js"></script>
   <script src="js/menuscene.js"></script>
   <script src="js/gamescene.js"></script>
-  <script src="js/upgradescene.js"></script>
+  <script src="js/blessingscene.js"></script>
   <script src="js/resultscene.js"></script>
 </body>
 </html>
