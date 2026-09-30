@@ -1,40 +1,50 @@
 /**
- * 游戏界面：上半区是怪物，下半区是 4×4 的 2048（默认全可玩）。
+ * 游戏界面：上半区是怪物，下半区是正方形战斗盘。
  *
- * 战斗回合：玩家每完成一次操作（滑动 / 消除 / 道具）= 1 个战斗回合，只在和怪物战斗时发生。
- * - 滑动：数字相同的方块合成更大的方块
- * - 消除：双击移走一个方块
- * - 结算：每隔 SETTLE_ROUNDS 个回合，场上每个方块的数字各算一次，累加后打向怪物
- *   攻击元素按周期轮换：每 4 次攻击里水火土风各出现一次，顺序随机
+ * 方块都是元素方块，带等级（方块规则见 blocks.js，刷新规律见 blockspawn.js）；新刷出的方块都是 1 级、不带元素。
+ * 战斗回合：滑动 / 道具各算 1 个战斗回合（消耗行动点），只在和怪物战斗时发生。
+ * - 滑动：同等级的两块合成高一级的方块
+ * - 使用：把方块拖到怪物身上 = 按它的数值和元素攻击；拖到血条上 = 获得同元素、同数值的护盾
+ *   （护盾叠放与克制规则见 elementshields.js）。使用方块不消耗行动点
+ * - 元素：方块只在合成时获得元素。每次有合成的滑动，本次合成出的方块统一变成周期里的下一个元素；
+ *   周期为 4 次合成，水火土风各一次，顺序由老虎机抽出
  * 怪物有自己独立的出手倒计时，与玩家同时开始；玩家每过一回合，倒计时减 1。
  */
 const GameScene = {
   el: document.getElementById("gamescene"),
-  /** 战斗盘铺满整块区域；每局开始时按区域大小和目标格子尺寸（px）算出行列数 */
+  /** 战斗盘为正方形；每局开始时按边长和目标格子尺寸（px）算出 N×N */
   CELL_TARGET: 60,
   MIN_LINES: 3,
-  /** 每隔多少个战斗回合结算一次场上方块的伤害 */
-  SETTLE_ROUNDS: 3,
   /** 祝福触发开关：false 时击败怪物不发奖励、直接下一波（祝福页签等界面照常保留） */
   BLESSINGS_ENABLED: false,
   /** 诅咒系统总开关：false 时怪物不带诅咒 */
   CURSES_ENABLED: false,
   MOVE_MS: 170,
-  PLAYER_MAX: 100,
   WIND_MS: 420,
+  playerLevel: 1,
+  ATTACK_ICON:
+    '<svg class="attack-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2C12 7 9 11.5 4 14.5"/><path d="M17.5 3.5C15.8 9.5 12 15 5.5 19"/><path d="M21 6.5C19 12 15 17.5 9 21"/></svg>',
   tiles: [],
   nextId: 1,
   score: 0,
   wave: 1,
-  settleLeft: 0,
   /** 本轮还没用到的攻击元素（每轮 4 种各一次，顺序随机） */
   attackCycle: [],
   lastAttackElement: null,
+  /** 同一元素最多连续几轮出现在同一位置（2 = 不会连续 3 轮） */
+  CYCLE_REPEAT_LIMIT: 2,
+  /** 最近几轮的完整顺序，用来限制重复；重开游戏也保留，避免每局开头总是同一元素 */
+  cycleHistory: [],
   /** 每轮开始的老虎机抽取动画（ms）：第一个转轮转多久、后面每个多转多久、全部停下后停留多久 */
-  SLOT_SPIN_MS: 1000,
+  SLOT_SPIN_MS: 1600,
   SLOT_STAGGER_MS: 500,
   SLOT_HOLD_MS: 1000,
+  /** 一轮元素用完后，「即将刷新元素顺序」提示停留多久再弹出老虎机（ms） */
+  SLOT_DELAY_MS: 2500,
+  /** 提示在老虎机出现前多久开始淡出（ms），让提示与老虎机之间有明显的停顿 */
+  SLOT_NOTICE_FADE_MS: 400,
   rolling: false,
+  slotHidingNext: false,
   slotEl: null,
   slotTimers: [],
   playerHp: 100,
@@ -47,7 +57,10 @@ const GameScene = {
   attacking: false,
   actionsLeft: 0,
   touchStart: null,
-  selected: null,
+  /** 正在拖动的方块：{ tile, id, x, y, ghost, target } */
+  drag: null,
+  /** 元素护盾，按添加先后排列（最后一个最先挨打），见 elementshields.js */
+  elementShields: [],
   timers: [],
   stats: null,
   blessingState: null,
@@ -62,7 +75,7 @@ const GameScene = {
     this.layout();
     if (data.afterBlessing) {
       this.trial = false;
-      if (!this.stats) this.stats = Stats.createPlayer();
+      if (!this.stats) this.stats = PlayerLevels.createStats(this.playerLevel);
       Blessings.ensure(this);
       if (data.fromDefeat) this.restoreBoard();
       if (data.blessingId) Blessings.applyChoice(this, data.blessingId);
@@ -113,6 +126,8 @@ const GameScene = {
     this.waveEl = document.getElementById("game-wave");
     this.playerFill = document.getElementById("player-hp-fill");
     this.playerHpText = document.getElementById("player-hp-text");
+    this.playerLevelEl = document.getElementById("player-level");
+    this.playerGuardEl = document.getElementById("player-guard-list");
     this.monsterFill = document.getElementById("monster-hp-fill");
     this.monsterHpText = document.getElementById("monster-hp-text");
     this.monsterName = document.getElementById("monster-name");
@@ -121,8 +136,8 @@ const GameScene = {
     this.attackLine = document.getElementById("monster-attack-line");
     this.attackCdEl = document.getElementById("monster-attack-cd");
     this.attackDmgEl = document.getElementById("monster-attack-dmg");
-    this.settleLine = document.getElementById("settle-line");
-    this.settleLeftEl = document.getElementById("settle-left");
+    this.settleNextEl = document.getElementById("settle-next");
+    this.settleLineEl = document.getElementById("settle-line");
     this.monsterElementEl = document.getElementById("monster-element");
     this.monsterCursesEl = document.getElementById("monster-curses");
     this.stageEl = document.getElementById("player-zone-stage");
@@ -150,12 +165,14 @@ const GameScene = {
       this.stageTouch = null;
     };
 
+    this.onDragMove = (event) => this.handleDragMove(event);
+    this.onDragEnd = (event) => this.handleDragEnd(event);
+    this.onDragCancel = () => this.cancelDrag();
+
     window.addEventListener("keydown", this.onKey);
     window.addEventListener("resize", this.onResize);
-    this.onBoardClick = () => this.clearSelect();
     this.board.addEventListener("touchstart", this.onTouchStart, { passive: true });
     this.board.addEventListener("touchend", this.onTouchEnd);
-    this.board.addEventListener("click", this.onBoardClick);
 
     if (this.stageEl) {
       this.stageEl.addEventListener("pointerdown", this.onStagePointerDown);
@@ -183,8 +200,8 @@ const GameScene = {
     if (this.board) {
       this.board.removeEventListener("touchstart", this.onTouchStart);
       this.board.removeEventListener("touchend", this.onTouchEnd);
-      this.board.removeEventListener("click", this.onBoardClick);
     }
+    this.cancelDrag();
     if (this.stageEl) {
       this.stageEl.removeEventListener("pointerdown", this.onStagePointerDown);
       this.stageEl.removeEventListener("pointerup", this.onStagePointerUp);
@@ -213,15 +230,29 @@ const GameScene = {
     };
   },
 
-  /** 按战斗盘区域大小决定行列数，只在开新局时调用，局中不变 */
+  /** 战斗盘保持 1:1：边长取所在区域宽、高中较小的一边 */
+  fitBoardSquare() {
+    const host = this.board && this.board.parentElement;
+    if (!host) return;
+    const styles = getComputedStyle(host);
+    const width = host.clientWidth - (parseFloat(styles.paddingLeft) || 0) - (parseFloat(styles.paddingRight) || 0);
+    const height = host.clientHeight - (parseFloat(styles.paddingTop) || 0) - (parseFloat(styles.paddingBottom) || 0);
+    const side = Math.max(0, Math.floor(Math.min(width, height)));
+    this.board.style.width = `${side}px`;
+    this.board.style.height = `${side}px`;
+  },
+
+  /** 按正方形战斗盘的边长决定 N×N 格子数，只在开新局时调用，局中不变 */
   configureGridSize() {
+    this.fitBoardSquare();
     const { gap, width, height } = this.boardInnerSize();
-    const fit = (length) =>
-      Math.max(this.MIN_LINES, Math.floor((length + gap) / (this.CELL_TARGET + gap)));
-    GameEngine.setSize(fit(height), fit(width));
+    const side = Math.min(width, height);
+    const lines = Math.max(this.MIN_LINES, Math.floor((side + gap) / (this.CELL_TARGET + gap)));
+    GameEngine.setSize(lines, lines);
   },
 
   layout() {
+    this.fitBoardSquare();
     const { pad, gap, width, height } = this.boardInnerSize();
     const cellW = (width - gap * (this.COLS - 1)) / this.COLS;
     const cellH = (height - gap * (this.ROWS - 1)) / this.ROWS;
@@ -260,7 +291,11 @@ const GameScene = {
     const animate = Boolean(opts.animate);
     this.activeTab = name;
     this.lowerEl.querySelectorAll(".tab-btn").forEach((btn) => {
-      btn.classList.toggle("is-active", btn.dataset.tab === name);
+      const active = btn.dataset.tab === name;
+      btn.classList.toggle("is-active", active);
+      btn.disabled = active;
+      if (active) btn.setAttribute("aria-current", "page");
+      else btn.removeAttribute("aria-current");
     });
     this.lowerEl.querySelectorAll(".stage-panel").forEach((panel) => {
       panel.classList.toggle("is-active", panel.dataset.panel === name);
@@ -332,10 +367,12 @@ const GameScene = {
     this.wave = 1;
     this.attackCycle = [];
     this.lastAttackElement = null;
-    this.stats = Stats.createPlayer();
+    this.playerLevel = PlayerLevels.START_LEVEL;
+    this.stats = PlayerLevels.createStats(this.playerLevel);
     this.blessingState = Blessings.createState();
     this.burns = { player: false, monster: false };
     this.shields = [];
+    this.elementShields = [];
     this.storedDamage = null;
     this.extraLocked = new Set();
     this.curseFrozen = new Set();
@@ -345,15 +382,13 @@ const GameScene = {
       GameEngine.extraLocked = this.extraLocked;
       GameEngine.curseFrozen = null;
     }
-    this.stats.maxHp = this.PLAYER_MAX;
-    this.stats.hp = this.PLAYER_MAX;
     this.syncHpFromStats();
     this.surviveSec = 0;
     this.startedAt = Date.now();
     this.over = false;
     this.busy = false;
     this.attacking = false;
-    this.clearSelect();
+    this.cancelDrag();
     this.boardCarry = null;
     this.layer.innerHTML = "";
     this.configureGridSize();
@@ -361,8 +396,7 @@ const GameScene = {
     this.buildGrid();
     this.startAttackCycle();
     this.spawnMonster();
-    this.addRandomTile();
-    this.addRandomTile();
+    for (let i = 0; i < BlockSpawn.START_COUNT; i += 1) this.addRandomTile();
     this.setTab("board", { animate: false });
     this.draw(false);
     this.updateHud();
@@ -370,7 +404,7 @@ const GameScene = {
   },
 
   syncHpFromStats() {
-    if (!this.stats) this.stats = Stats.createPlayer();
+    if (!this.stats) this.stats = PlayerLevels.createStats(this.playerLevel);
     Blessings.clampFuryMaxHp(this);
     Stats.clampHp(this.stats);
     this.playerMax = this.stats.maxHp;
@@ -378,7 +412,7 @@ const GameScene = {
   },
 
   syncStatsFromHp() {
-    if (!this.stats) this.stats = Stats.createPlayer();
+    if (!this.stats) this.stats = PlayerLevels.createStats(this.playerLevel);
     this.stats.maxHp = this.playerMax;
     this.stats.hp = this.playerHp;
     Blessings.clampFuryMaxHp(this);
@@ -473,7 +507,6 @@ const GameScene = {
       if (this.curseFrozen) this.curseFrozen.clear();
     }
     this.resetActionCounter();
-    this.resetSettleCounter();
     this.updateMonsterElement();
     this.updateMonsterCurses();
     Blessings.onMonsterSpawn(this);
@@ -501,32 +534,6 @@ const GameScene = {
         return `<span class="curse-chip" title="${item.desc}">${item.name}${detail}</span>`;
       })
       .join("");
-  },
-
-  /** 方块颜色 = 下一次攻击的元素；左上角箭头表示它对怪物克制 / 被克制 */
-  paintTile(tile) {
-    if (!tile.el) return;
-    const element = this.nextAttackElement();
-    tile.el.dataset.element = element;
-    let mark = tile.el.querySelector(".tile-advantage");
-    if (!mark) {
-      mark = document.createElement("span");
-      mark.className = "tile-advantage";
-      mark.setAttribute("aria-hidden", "true");
-      tile.el.prepend(mark);
-    }
-    mark.classList.remove("is-up", "is-down");
-    mark.textContent = "";
-    const { typeMult } = Blessings.pickAttackSettlement(this, element, this.monsterElement);
-    if (typeMult > 1) {
-      mark.classList.add("is-up");
-    } else if (typeMult < 1) {
-      mark.classList.add("is-down");
-    }
-  },
-
-  paintTiles() {
-    this.tiles.forEach((tile) => this.paintTile(tile));
   },
 
   updateMonsterElement() {
@@ -562,12 +569,14 @@ const GameScene = {
   addShield(amount, actionsLeft) {
     if (!Array.isArray(this.shields)) this.shields = [];
     const hp = Math.max(0, Math.floor(Number(amount) || 0));
-    if (hp <= 0) return;
+    if (hp <= 0) return null;
     const life =
       actionsLeft == null || actionsLeft === undefined
         ? null
         : Math.max(0, Math.floor(Number(actionsLeft)));
-    this.shields.push({ amount: hp, actionsLeft: life });
+    const layer = { amount: hp, actionsLeft: life };
+    this.shields.push(layer);
+    return layer;
   },
 
   shieldTotal() {
@@ -635,7 +644,7 @@ const GameScene = {
       }
     }
     if (this.hasBurn("player") && this.playerHp > 0) {
-      if (!this.stats) this.stats = Stats.createPlayer();
+      if (!this.stats) this.stats = PlayerLevels.createStats(this.playerLevel);
       this.syncStatsFromHp();
       this.stats.hp = Math.max(0, this.stats.hp - burnDmg);
       this.syncHpFromStats();
@@ -659,53 +668,6 @@ const GameScene = {
       else this.attacking = false;
     }, this.WIND_MS);
     this.timers.push(hit);
-  },
-
-  addRandomTile() {
-    const empties = [];
-    for (let row = 0; row < this.ROWS; row += 1) {
-      for (let col = 0; col < this.COLS; col += 1) {
-        if (GameEngine.isPlayable(row, col) && !this.tileAt(row, col)) {
-          empties.push({ row, col });
-        }
-      }
-    }
-    if (!empties.length) return;
-    const spot = empties[Math.floor(Math.random() * empties.length)];
-    this.addTileAt(spot.row, spot.col, Blessings.spawnValue(this));
-  },
-
-  addTile(value) {
-    const empties = [];
-    for (let row = 0; row < this.ROWS; row += 1) {
-      for (let col = 0; col < this.COLS; col += 1) {
-        if (GameEngine.isPlayable(row, col) && !this.tileAt(row, col)) {
-          empties.push({ row, col });
-        }
-      }
-    }
-    if (!empties.length) return false;
-    const spot = empties[Math.floor(Math.random() * empties.length)];
-    this.addTileAt(spot.row, spot.col, value);
-    return true;
-  },
-
-  addTileAt(row, col, value, element = null) {
-    this.tiles.push({
-      id: this.nextId++,
-      row,
-      col,
-      value,
-      element,
-      el: null,
-      merged: false,
-      removed: false,
-      isNew: true
-    });
-  },
-
-  tileAt(row, col) {
-    return this.tiles.find((tile) => !tile.removed && tile.row === row && tile.col === col);
   },
 
   handleKey(event) {
@@ -751,7 +713,7 @@ const GameScene = {
   move(dir) {
     if (this.activeTab !== "board") return;
     if (this.busy || this.over || this.rolling) return;
-    this.clearSelect();
+    this.cancelDrag();
 
     this.tiles.forEach((tile) => {
       tile.merged = false;
@@ -762,20 +724,20 @@ const GameScene = {
     const result = GameEngine.move(this.tiles, dir);
     if (!result.moved) return;
 
-    // 合成类祝福（跃升 / 引燃 / 蓄甲 / 滋生）按「下一次攻击的元素」判定
+    // 合成类祝福（跃升 / 引燃 / 蓄甲 / 滋生）按「本次合成会变成的元素」判定
     const swipeElement = this.nextAttackElement();
 
     result.tiles.forEach((next) => {
       const tile = this.tiles.find((item) => item.id === next.id);
       if (!tile) return;
-      // 滑动阶段只改位置；数字等滑完再改
+      // 滑动阶段只改位置；等级等滑完再改
       tile.row = next.row;
       tile.col = next.col;
       tile.removed = next.removed;
       tile.merged = next.merged;
       tile.justMerged = next.justMerged;
       if (next.justMerged) {
-        tile.pendingValue = next.value;
+        tile.pendingLevel = next.level;
       }
     });
 
@@ -791,19 +753,31 @@ const GameScene = {
       });
       let didMerge = false;
       let mergeCount = 0;
+      const mergedTiles = [];
       this.tiles.forEach((tile) => {
-        if (tile.pendingValue != null) {
+        if (tile.pendingLevel != null) {
           didMerge = true;
           mergeCount += 1;
-          let value = tile.pendingValue;
-          tile.pendingValue = null;
-          // 跃升：风方向合成后有概率再翻倍
+          mergedTiles.push(tile);
+          let level = tile.pendingLevel;
+          tile.pendingLevel = null;
+          // 跃升：风方向合成后有概率再升一级
           if (Blessings.rollWindAscent(this, swipeElement)) {
-            value *= 2;
+            level += 1;
           }
-          tile.value = value;
+          tile.level = level;
+          tile.value = Blocks.valueFor(level);
         }
       });
+      // 有合成的滑动才切换元素：本次合成出的方块统一变成周期里的下一个元素
+      if (mergedTiles.length) {
+        const element = this.takeAttackElement();
+        mergedTiles.forEach((tile) => {
+          tile.element = element;
+        });
+        this.lastAttackElement = element;
+        this.updateSettleNext();
+      }
       // 引燃：火方向且本次有合成时，有概率标记下次攻击必上灼烧
       if (didMerge) Blessings.rollFireIgnite(this, swipeElement);
       // 蓄甲：土方向每合成一次 +1 护盾
@@ -812,7 +786,7 @@ const GameScene = {
       if (didMerge && Blessings.rollWaterSpawn(this, swipeElement)) {
         this.addRandomTile();
       }
-      this.addRandomTile();
+      for (let i = 0; i < BlockSpawn.PER_MOVE; i += 1) this.addRandomTile();
       this.draw(false);
       // 连消的连击：连续有合成的回合才累计
       if (!didMerge) Blessings.resetAttackCombo(this);
@@ -827,134 +801,80 @@ const GameScene = {
     }, this.MOVE_MS);
   },
 
-  bindTile(tile) {
-    if (!tile.el || tile.el.dataset.bound === "1") return;
-    tile.el.dataset.bound = "1";
-    tile.el.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      this.selectOrEliminate(tile);
-    });
-    tile.el.addEventListener("touchend", (event) => {
-      if (this.touchStart) {
-        const point = event.changedTouches[0];
-        const moved = Math.hypot(
-          point.clientX - this.touchStart.x,
-          point.clientY - this.touchStart.y
-        );
-        if (moved >= 28) return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      this.ignoreSwipe = true;
-      this.selectOrEliminate(tile);
-    });
-  },
-
-  selectOrEliminate(tile) {
-    if (this.busy || this.over || this.rolling || !tile || tile.removed) return;
-    if (this.selected === tile) {
-      this.clearSelect();
-      this.eliminateTile(tile);
-      return;
-    }
-    this.selectTile(tile);
-  },
-
-  selectTile(tile) {
-    this.clearSelect();
-    this.selected = tile;
-    if (tile.el) tile.el.classList.add("is-aimed");
-    TutorialGuide.notify("select");
-    if (TutorialGuide.isActive()) TutorialGuide.refreshFocus();
-  },
-
-  clearSelect() {
-    if (this.selected && this.selected.el) {
-      this.selected.el.classList.remove("is-aimed");
-    }
-    this.selected = null;
-  },
-
-  /** 消除：双击移走一个方块，算一次战斗回合 */
-  eliminateTile(tile) {
-    if (this.busy || this.over || this.rolling || !tile || tile.removed || !tile.el) return;
-    this.clearSelect();
-
-    const info = { value: tile.value, element: tile.element || null };
-    const el = tile.el;
-    tile.removed = true;
-    this.tiles = this.tiles.filter((item) => item !== tile);
-    el.classList.remove("is-spawn", "is-merge", "is-aimed");
-    el.classList.add("is-vanish");
-    window.setTimeout(() => el.remove(), 220);
-
-    this.onEliminate(info);
-    Blessings.resetAttackCombo(this);
-    // 棋盘空了就走不了棋，补一块保证还能继续
-    if (this.tiles.length === 0) {
-      this.addRandomTile();
-      this.draw(false);
-    }
-    TutorialGuide.notify("eliminate");
-    this.endPlayerRound();
-    if (TutorialGuide.isActive()) TutorialGuide.refreshFocus();
-  },
-
   /**
-   * 消除方块的额外效果（待设计）。
-   * @param {{ value: number, element: string|null }} info 被消除方块的数字与元素
-   */
-  onEliminate(info) {},
-
-  /**
-   * 一次完整操作（滑动 / 消除 / 道具）结束 = 一个战斗回合：
-   * 结算倒计时减 1，归零时按场上方块结算伤害；怪物没死，再推进它的出手倒计时。
-   * 道具等新操作在效果生效后调用本方法即可计入回合。
+   * 一次消耗行动点的操作（滑动 / 道具）结束 = 一个战斗回合：推进怪物的出手倒计时。
+   * 消除方块不走这里。道具等新操作在效果生效后调用本方法即可计入回合。
    */
   endPlayerRound() {
-    if (this.over || this.monsterHp <= 0) return;
-    this.settleLeft = Math.max(0, this.settleLeft - 1);
-    if (this.settleLeft <= 0) {
-      this.settleBoard();
-      this.resetSettleCounter();
-    } else {
-      this.updateSettleHud();
-    }
     if (this.over || this.monsterHp <= 0) return;
     this.registerAction();
   },
 
-  resetSettleCounter() {
-    this.settleLeft = Math.max(1, this.SETTLE_ROUNDS);
-    this.updateSettleHud();
-  },
-
-  updateSettleHud() {
-    if (!this.settleLeftEl) return;
-    this.settleLeftEl.textContent = String(this.settleLeft);
-    if (this.settleLine) this.settleLine.classList.toggle("is-soon", this.settleLeft <= 1);
-  },
-
-  /** 结算：场上每个方块的数字各算一次，累加后按本次攻击元素打向怪物 */
-  settleBoard() {
-    const live = this.tiles.filter((tile) => !tile.removed);
-    if (!live.length) return;
-    const total = live.reduce((sum, tile) => sum + tile.value, 0);
-    const element = this.takeAttackElement();
-    this.lastAttackElement = element;
-    this.hitMonster([{ amount: total, element }]);
-    this.paintTiles();
-  },
-
-  /** 攻击元素周期：每 4 次攻击里水火土风各出现一次，顺序随机 */
-  refillAttackCycle() {
-    const bag = Elements.LIST.slice();
-    for (let i = bag.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [bag[i], bag[j]] = [bag[j], bag[i]];
+  /** 下一次宝剑合成会变成的元素（老虎机转完之前不显示） */
+  updateSettleNext() {
+    if (!this.settleNextEl) return;
+    if (this.slotHidingNext) {
+      this.settleNextEl.innerHTML = "";
+      return;
     }
-    this.attackCycle = bag;
+    const meta = Elements.meta(this.nextAttackElement());
+    this.settleNextEl.innerHTML =
+      `，下次合成 <span class="element-badge" data-element="${meta.id}" title="${meta.name}">${meta.short}</span>`;
+  },
+
+  /** 方块拖到血条上：获得同元素、同数值的护盾，一直保留到被打碎 */
+  addElementShield(element, amount) {
+    ElementShields.add(this.elementShields, element, amount);
+    const name = element ? Elements.meta(element).short : "";
+    this.popDamage(amount, this.playerHpRow, "fx-shot is-player", 1, `${name}盾+${amount}`);
+    this.updateGuardHud();
+  },
+
+  /** 护盾列表：左边第一个最先挨打（= 最后加入的），颜色 = 护盾元素，数字 = 剩余数值 */
+  updateGuardHud() {
+    if (!this.playerGuardEl) return;
+    const layers = this.elementShields.slice().reverse();
+    if (!layers.length) {
+      this.playerGuardEl.innerHTML = `<em class="guard-empty">0</em>`;
+      return;
+    }
+    const format = (value) => (Number.isInteger(value) ? String(value) : value.toFixed(1));
+    this.playerGuardEl.innerHTML = layers
+      .map((layer) => {
+        const meta = layer.element ? Elements.meta(layer.element) : null;
+        const attr = meta ? ` data-element="${meta.id}"` : "";
+        const title = `${meta ? meta.name : "无"}属性护盾 ${format(layer.amount)}`;
+        return `<span class="element-badge guard-chip"${attr} title="${title}">${format(layer.amount)}</span>`;
+      })
+      .join("");
+  },
+
+  /**
+   * 合成元素周期：每 4 次宝剑合成里水火土风各出现一次，顺序随机；
+   * 但某元素若已连续 CYCLE_REPEAT_LIMIT 轮落在同一位置，本轮不能再落在该位置。
+   */
+  refillAttackCycle() {
+    const limit = this.CYCLE_REPEAT_LIMIT;
+    const recent = this.cycleHistory.slice(-limit);
+    const blocked = (order) =>
+      recent.length >= limit &&
+      order.some((el, pos) => recent.every((cycle) => cycle[pos] === el));
+    const all = this.permutations(Elements.LIST);
+    const allowed = all.filter((order) => !blocked(order));
+    const pool = allowed.length ? allowed : all;
+    this.attackCycle = pool[Math.floor(Math.random() * pool.length)].slice();
+    this.cycleHistory.push(this.attackCycle.slice());
+    if (this.cycleHistory.length > limit) this.cycleHistory.shift();
+  },
+
+  permutations(list) {
+    if (list.length <= 1) return [list.slice()];
+    const out = [];
+    list.forEach((item, i) => {
+      const rest = list.slice(0, i).concat(list.slice(i + 1));
+      this.permutations(rest).forEach((tail) => out.push([item, ...tail]));
+    });
+    return out;
   },
 
   nextAttackElement() {
@@ -965,8 +885,26 @@ const GameScene = {
   takeAttackElement() {
     const element = this.nextAttackElement();
     this.attackCycle.shift();
-    if (!this.attackCycle.length) this.startAttackCycle();
+    if (!this.attackCycle.length) this.queueAttackCycle();
     return element;
+  },
+
+  /**
+   * 本轮元素用完：立刻弹出「即将刷新元素顺序」提示，停 SLOT_DELAY_MS 后再播放老虎机抽下一轮；
+   * 提示期间盘面可见但不能操作。
+   */
+  queueAttackCycle() {
+    this.clearSlot();
+    this.rolling = true;
+    this.slotHidingNext = true;
+    this.updateSettleNext();
+    if (this.settleLineEl) this.settleLineEl.classList.add("is-refreshing");
+    this.slotTimers.push(
+      window.setTimeout(() => {
+        if (this.settleLineEl) this.settleLineEl.classList.add("is-refresh-leaving");
+      }, this.SLOT_DELAY_MS - this.SLOT_NOTICE_FADE_MS)
+    );
+    this.slotTimers.push(window.setTimeout(() => this.startAttackCycle(), this.SLOT_DELAY_MS));
   },
 
   /** 新一轮攻击元素：洗好顺序后播放老虎机动画告诉玩家 */
@@ -975,12 +913,14 @@ const GameScene = {
     this.playCycleSlot(this.attackCycle.slice());
   },
 
-  /** 老虎机：每个转轮滚过若干随机元素后停在本轮对应位置，从左到右依次停下 */
+  /** 老虎机（纯展示）：每个转轮按水火土风固定顺序循环滚动，停在本轮已定好的元素上，从左到右依次停下 */
   playCycleSlot(order) {
     this.clearSlot();
     if (!this.board) return;
     this.rolling = true;
-    this.clearSelect();
+    this.slotHidingNext = true;
+    this.updateSettleNext();
+    this.cancelDrag();
 
     const overlay = document.createElement("div");
     overlay.className = "slot-overlay";
@@ -997,14 +937,14 @@ const GameScene = {
       reel.className = "slot-reel";
       const strip = document.createElement("div");
       strip.className = "slot-strip";
+      const list = Elements.LIST;
+      const duration = this.SLOT_SPIN_MS + i * this.SLOT_STAGGER_MS;
+      const laps = Math.max(1, Math.floor(duration / 90 / list.length));
+      const steps = laps * list.length + list.indexOf(target);
       const symbols = [];
-      const spins = 12 + i * 5;
-      for (let k = 0; k < spins; k += 1) {
-        symbols.push(Elements.LIST[Math.floor(Math.random() * Elements.LIST.length)]);
-      }
-      symbols.push(target);
+      for (let k = 0; k <= steps; k += 1) symbols.push(list[k % list.length]);
       strip.innerHTML = symbols.map(badge).join("");
-      strip.style.transitionDuration = `${this.SLOT_SPIN_MS + i * this.SLOT_STAGGER_MS}ms`;
+      strip.style.transitionDuration = `${duration}ms`;
       reel.appendChild(strip);
       row.appendChild(reel);
       return { reel, strip, steps: symbols.length - 1 };
@@ -1030,7 +970,11 @@ const GameScene = {
     });
     const allStopped = this.SLOT_SPIN_MS + (order.length - 1) * this.SLOT_STAGGER_MS;
     this.slotTimers.push(
-      window.setTimeout(() => overlay.classList.add("is-leaving"), allStopped + this.SLOT_HOLD_MS)
+      window.setTimeout(() => {
+        overlay.classList.add("is-leaving");
+        this.slotHidingNext = false;
+        this.updateSettleNext();
+      }, allStopped + this.SLOT_HOLD_MS)
     );
     this.slotTimers.push(
       window.setTimeout(() => this.clearSlot(), allStopped + this.SLOT_HOLD_MS + 220)
@@ -1042,7 +986,12 @@ const GameScene = {
     this.slotTimers = [];
     if (this.slotEl) this.slotEl.remove();
     this.slotEl = null;
+    if (this.settleLineEl) this.settleLineEl.classList.remove("is-refreshing", "is-refresh-leaving");
     this.rolling = false;
+    if (this.slotHidingNext) {
+      this.slotHidingNext = false;
+      this.updateSettleNext();
+    }
   },
 
   /**
@@ -1051,7 +1000,7 @@ const GameScene = {
    */
   hitMonster(parts) {
     if (this.over) return;
-    if (!this.stats) this.stats = Stats.createPlayer();
+    if (!this.stats) this.stats = PlayerLevels.createStats(this.playerLevel);
     Blessings.ensure(this);
     // 玩家出手 = 玩家的「下一次攻击」，清除自己身上的灼烧
     this.clearBurn("player");
@@ -1231,38 +1180,9 @@ const GameScene = {
     }, 420);
   },
 
-  captureBoard() {
-    this.boardCarry = this.tiles
-      .filter((tile) => !tile.removed)
-      .map((tile) => ({
-        row: tile.row,
-        col: tile.col,
-        value: tile.value,
-        element: tile.element
-      }));
-  },
-
-  restoreBoard() {
-    const carry = this.boardCarry;
-    if (!carry) return;
-    this.boardCarry = null;
-    this.clearSelect();
-    this.tiles.forEach((tile) => {
-      if (tile.el) tile.el.remove();
-    });
-    this.tiles = [];
-    if (this.layer) this.layer.innerHTML = "";
-    carry.forEach((tile) => {
-      this.addTileAt(tile.row, tile.col, tile.value, tile.element);
-    });
-    this.tiles.forEach((tile) => {
-      tile.isNew = false;
-    });
-  },
-
   hurtPlayer(amount) {
     if (this.over) return;
-    if (!this.stats) this.stats = Stats.createPlayer();
+    if (!this.stats) this.stats = PlayerLevels.createStats(this.playerLevel);
     this.syncStatsFromHp();
     Blessings.ensure(this);
     if (Blessings.rollLightBody(this)) {
@@ -1287,7 +1207,9 @@ const GameScene = {
       this.updateHud();
       return;
     }
-    const remain = this.absorbWithShield(incoming);
+    // 元素护盾先挡（最后加入的最先挨打，克制时消耗翻倍），剩下的再交给祝福护盾
+    const pierce = ElementShields.absorb(this.elementShields, incoming, this.monsterElement);
+    const remain = this.absorbWithShield(Math.ceil(pierce - 1e-9));
     const blocked = incoming - remain;
     let hpLoss = remain;
     // 续命术：致命攻击（扣血后 ≤0）免疫一次
@@ -1332,7 +1254,7 @@ const GameScene = {
   handlePlayerDown() {
     if (this.over) return;
     if (Blessings.tryOnceMore(this)) {
-      if (!this.stats) this.stats = Stats.createPlayer();
+      if (!this.stats) this.stats = PlayerLevels.createStats(this.playerLevel);
       this.stats.hp = this.stats.maxHp;
       this.syncHpFromStats();
       this.popDamage(0, this.playerHpRow, "fx-shot is-player", 1, "再来一次!");
@@ -1361,9 +1283,13 @@ const GameScene = {
 
   updateAttackHud() {
     if (!this.attackCdEl) return;
-    this.attackCdEl.textContent = `还剩 ${this.actionsLeft} 次`;
+    // 怪物视角：下一次行动就会出手时显示攻击图标，否则显示还要几回合
+    const imminent = this.actionsLeft <= 1;
+    this.attackCdEl.innerHTML = imminent
+      ? `${this.ATTACK_ICON}<span>即将攻击</span>`
+      : `${this.actionsLeft} 回合后攻击`;
     this.attackDmgEl.textContent = String(this.monsterDamage());
-    this.attackLine.classList.toggle("is-soon", this.actionsLeft <= 1);
+    this.attackLine.classList.toggle("is-soon", imminent);
   },
 
   stopLoops() {
@@ -1398,6 +1324,76 @@ const GameScene = {
     });
   },
 
+  updateHud() {
+    this.syncHpFromStats();
+    this.waveEl.textContent = this.trial ? "试玩" : String(this.wave);
+    this.updateAttackHud();
+    this.updateSettleNext();
+    this.updateMonsterElement();
+    this.playerHpText.textContent = String(this.playerHp);
+    if (this.playerLevelEl) this.playerLevelEl.textContent = String(this.playerLevel);
+    this.updateGuardHud();
+    this.monsterHpText.textContent = String(this.monsterHp);
+    this.playerFill.style.transform = `scaleX(${this.playerHp / this.playerMax})`;
+    this.monsterFill.style.transform = `scaleX(${this.monsterMax ? this.monsterHp / this.monsterMax : 0})`;
+  },
+
+  // ---------- 方块：放上战斗盘（刷在哪、刷什么由 BlockSpawn 决定） ----------
+
+  /** 按刷新规律在随机空格刷一块；没有空格返回 false */
+  addRandomTile() {
+    return this.addTile();
+  },
+
+  /** 在随机空格放一块指定等级的方块（不指定则按刷新规律）；没有空格返回 false */
+  addTile(level, element = null) {
+    const spot = BlockSpawn.pick(this.tiles, this.ROWS, this.COLS, {
+      level,
+      isPlayable: (row, col) => GameEngine.isPlayable(row, col)
+    });
+    if (!spot) return false;
+    this.addTileAt(spot.row, spot.col, spot.level, element);
+    return true;
+  },
+
+  addTileAt(row, col, level = BlockSpawn.LEVEL, element = null) {
+    this.tiles.push({
+      id: this.nextId++,
+      row,
+      col,
+      level,
+      value: Blocks.valueFor(level),
+      element,
+      el: null,
+      merged: false,
+      removed: false,
+      isNew: true
+    });
+  },
+
+  tileAt(row, col) {
+    return this.tiles.find((tile) => !tile.removed && tile.row === row && tile.col === col);
+  },
+
+  // ---------- 方块外观（UI）：当前用代码绘制的 SVG，之后换贴图只需改这一段 ----------
+
+  /** 还没合成过、不带元素的方块 */
+  NEUTRAL_ICON:
+    '<svg viewBox="0 0 24 24"><path d="M7 3H17L22 9L12 21L2 9Z"/><path class="tile-icon-line" d="M2 9H22M9.5 3 7.5 9 12 21 16.5 9 14.5 3"/></svg>',
+  /** 合成过的方块：图标 = 它自己的元素 */
+  ELEMENT_ICONS: {
+    water:
+      '<svg viewBox="0 0 24 24"><path d="M12 2C12 2 5 10.5 5 15A7 7 0 0 0 19 15C19 10.5 12 2 12 2Z"/><path class="tile-icon-line" d="M8.6 15.2A3.4 3.4 0 0 0 11.4 18.6"/></svg>',
+    fire:
+      '<svg viewBox="0 0 24 24"><path d="M12 1.8C13.2 5.6 18.5 8.2 18.5 14.2A6.5 6.5 0 0 1 5.5 14.2C5.5 10.9 7.3 8.8 8.9 7.4 8.9 9.8 10 11.2 11.3 11.6 10.4 8.4 10.8 4.8 12 1.8Z"/><path class="tile-icon-line" d="M12 13.5C13.6 15 14.2 16.2 14.2 17.4A2.2 2.2 0 0 1 9.8 17.4C9.8 16 10.8 14.8 12 13.5Z"/></svg>',
+    earth:
+      '<svg viewBox="0 0 24 24"><path d="M1.8 20.5 8.8 6.5 13 13.2 15.6 9.6 22.2 20.5Z"/><path class="tile-icon-line" d="M6.9 10.3 8.8 12 10.7 10.3"/></svg>',
+    wind:
+      '<svg viewBox="0 0 24 24"><g class="tile-icon-wind"><path d="M3 9H14.5A3 3 0 1 0 11.5 6"/><path d="M3 13.5H18A2.6 2.6 0 1 1 15.4 16.1"/><path d="M3 18H10"/></g><g class="tile-icon-wind is-core"><path d="M3 9H14.5A3 3 0 1 0 11.5 6"/><path d="M3 13.5H18A2.6 2.6 0 1 1 15.4 16.1"/><path d="M3 18H10"/></g></svg>'
+  },
+  /** 等级外观最多分到第几档（右上角数字 + 图标尺寸），更高等级沿用最后一档 */
+  MAX_TIER: 5,
+
   pos(row, col) {
     return {
       x: col * (this.cellW + this.gap),
@@ -1412,25 +1408,28 @@ const GameScene = {
         tile.el.className = "tile";
         tile.el.innerHTML =
           `<span class="tile-advantage" aria-hidden="true"></span>` +
-          `<span class="tile-value"></span>`;
+          `<span class="tile-icon" aria-hidden="true"></span>` +
+          `<span class="tile-level"></span>`;
         this.layer.appendChild(tile.el);
         this.bindTile(tile);
       }
 
       const { x, y } = this.pos(tile.row, tile.col);
       this.paintTile(tile);
-      // 滑动动画中数字等停稳再刷新
+      // 滑动动画中等级等停稳再刷新
       if (!animate) {
-        tile.el.dataset.value = String(tile.value);
-        const valueEl = tile.el.querySelector(".tile-value");
-        if (valueEl) valueEl.textContent = tile.value;
+        tile.el.dataset.level = String(tile.level);
+        tile.el.dataset.tier = String(Math.min(tile.level, this.MAX_TIER));
+        const elementName = tile.element ? `${Elements.meta(tile.element).name}属性` : "无属性";
+        tile.el.title = `${tile.level}级${elementName}${Blocks.NAME}（${tile.value}）`;
+        const levelEl = tile.el.querySelector(".tile-level");
+        if (levelEl) levelEl.textContent = String(tile.level);
       }
       tile.el.style.setProperty("--x", `${x}px`);
       tile.el.style.setProperty("--y", `${y}px`);
 
       tile.el.classList.toggle("is-spawn", tile.isNew && !animate);
       tile.el.classList.toggle("is-merge", tile.justMerged && !animate);
-      tile.el.classList.toggle("is-aimed", this.selected === tile);
 
       if (!animate) {
         tile.el.style.transition = "none";
@@ -1440,16 +1439,219 @@ const GameScene = {
     });
   },
 
-  updateHud() {
-    this.syncHpFromStats();
-    this.waveEl.textContent = this.trial ? "试玩" : String(this.wave);
-    this.updateAttackHud();
-    this.updateSettleHud();
-    this.updateMonsterElement();
-    this.playerHpText.textContent = String(this.playerHp);
-    this.monsterHpText.textContent = String(this.monsterHp);
-    this.playerFill.style.transform = `scaleX(${this.playerHp / this.playerMax})`;
-    this.monsterFill.style.transform = `scaleX(${this.monsterMax ? this.monsterHp / this.monsterMax : 0})`;
+  /**
+   * 方块图标与颜色 = 它自己的元素（合成时获得），左上角箭头表示攻击怪物时克制 / 被克制；
+   * 没合成过的方块不带元素，显示白底宝石图标。
+   */
+  paintTile(tile) {
+    if (!tile.el) return;
+    let mark = tile.el.querySelector(".tile-advantage");
+    if (!mark) {
+      mark = document.createElement("span");
+      mark.className = "tile-advantage";
+      mark.setAttribute("aria-hidden", "true");
+      tile.el.prepend(mark);
+    }
+    mark.classList.remove("is-up", "is-down");
+    mark.textContent = "";
+    const element = tile.element || null;
+    const icon = tile.el.querySelector(".tile-icon");
+    const iconKey = element || "neutral";
+    if (icon && icon.dataset.icon !== iconKey) {
+      icon.dataset.icon = iconKey;
+      icon.innerHTML = element ? this.ELEMENT_ICONS[element] || "" : this.NEUTRAL_ICON;
+    }
+    if (!element) {
+      delete tile.el.dataset.element;
+      return;
+    }
+    tile.el.dataset.element = element;
+    const { typeMult } = Blessings.pickAttackSettlement(this, element, this.monsterElement);
+    if (typeMult > 1) {
+      mark.classList.add("is-up");
+    } else if (typeMult < 1) {
+      mark.classList.add("is-down");
+    }
+  },
+
+  paintTiles() {
+    this.tiles.forEach((tile) => this.paintTile(tile));
+  },
+
+  // ---------- 方块操作：拖到怪物身上攻击，拖到血条上加护盾 ----------
+
+  /** 手指 / 鼠标移动超过多少像素才算开始拖动 */
+  DRAG_START_PX: 8,
+  /** 目标区域四周放宽的判定范围（px） */
+  DROP_SLOP_PX: 16,
+
+  bindTile(tile) {
+    if (!tile.el || tile.el.dataset.bound === "1") return;
+    tile.el.dataset.bound = "1";
+    tile.el.addEventListener("pointerdown", (event) => this.startDrag(tile, event));
+  },
+
+  startDrag(tile, event) {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (this.activeTab !== "board" || this.busy || this.over || this.rolling || !tile || tile.removed) return;
+    event.preventDefault();
+    this.cancelDrag();
+    this.drag = { tile, id: event.pointerId, x: event.clientX, y: event.clientY, ghost: null, target: null };
+    window.addEventListener("pointermove", this.onDragMove);
+    window.addEventListener("pointerup", this.onDragEnd);
+    window.addEventListener("pointercancel", this.onDragCancel);
+  },
+
+  handleDragMove(event) {
+    const drag = this.drag;
+    if (!drag || drag.id !== event.pointerId) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (!drag.ghost) {
+      if (Math.hypot(dx, dy) < this.DRAG_START_PX || !drag.tile.el) return;
+      const rect = drag.tile.el.getBoundingClientRect();
+      const ghost = drag.tile.el.cloneNode(true);
+      ghost.classList.remove("is-spawn", "is-merge");
+      ghost.classList.add("tile-ghost");
+      ghost.style.left = `${rect.left}px`;
+      ghost.style.top = `${rect.top}px`;
+      ghost.style.width = `${rect.width}px`;
+      ghost.style.height = `${rect.height}px`;
+      document.body.appendChild(ghost);
+      drag.ghost = ghost;
+      drag.tile.el.classList.add("is-dragging");
+    }
+    drag.ghost.style.transform = `translate(${dx}px, ${dy}px) scale(1.08)`;
+    this.setDropTarget(this.dropTargetAt(event.clientX, event.clientY));
+  },
+
+  /** 松手位置落在哪个目标上：monster = 攻击，shield = 加护盾，null = 都不是 */
+  dropTargetAt(x, y) {
+    const inside = (el) => {
+      if (!el) return false;
+      const rect = el.getBoundingClientRect();
+      const slop = this.DROP_SLOP_PX;
+      return x >= rect.left - slop && x <= rect.right + slop && y >= rect.top - slop && y <= rect.bottom + slop;
+    };
+    if (inside(this.monsterEl)) return "monster";
+    if (inside(this.playerHpRow)) return "shield";
+    return null;
+  },
+
+  setDropTarget(target) {
+    if (!this.drag || this.drag.target === target) return;
+    this.drag.target = target;
+    if (this.monsterEl) this.monsterEl.classList.toggle("is-drop-target", target === "monster");
+    if (this.playerHpRow) this.playerHpRow.classList.toggle("is-drop-target", target === "shield");
+  },
+
+  /**
+   * 松手：落在怪物 / 血条上就使用方块；否则拖动距离够长时当作一次滑动。
+   * 触屏时同一次触摸还会触发棋盘的 touchend，用 ignoreSwipe 避免重复滑动。
+   */
+  handleDragEnd(event) {
+    const drag = this.drag;
+    if (!drag || drag.id !== event.pointerId) return;
+    if (event.pointerType === "touch") this.ignoreSwipe = true;
+    const target = drag.ghost ? this.dropTargetAt(event.clientX, event.clientY) : null;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    this.cancelDrag(Boolean(target));
+    if (target) {
+      this.useTile(drag.tile, target);
+    } else if (Math.max(Math.abs(dx), Math.abs(dy)) >= 28) {
+      if (Math.abs(dx) > Math.abs(dy)) this.move(dx > 0 ? "right" : "left");
+      else this.move(dy > 0 ? "down" : "up");
+    }
+  },
+
+  /** 结束拖动并清理残影；dropped 为 true 时残影在目标处缩小消失 */
+  cancelDrag(dropped = false) {
+    const drag = this.drag;
+    this.drag = null;
+    window.removeEventListener("pointermove", this.onDragMove);
+    window.removeEventListener("pointerup", this.onDragEnd);
+    window.removeEventListener("pointercancel", this.onDragCancel);
+    if (this.monsterEl) this.monsterEl.classList.remove("is-drop-target");
+    if (this.playerHpRow) this.playerHpRow.classList.remove("is-drop-target");
+    if (!drag) return;
+    if (drag.tile.el) drag.tile.el.classList.remove("is-dragging");
+    const ghost = drag.ghost;
+    if (!ghost) return;
+    if (dropped) {
+      ghost.classList.add("is-dropped");
+      window.setTimeout(() => ghost.remove(), 200);
+    } else {
+      ghost.remove();
+    }
+  },
+
+  /**
+   * 使用方块：不算行动点（不推进怪物出手倒计时），也不补新方块。
+   * 新方块只在有效滑动后生成，所以场上最后一块不能使用，否则会没有可滑动的方块而卡死。
+   * - monster：用方块的数值和元素攻击怪物（没合成过的方块不带元素，按无克制计算）
+   * - shield：获得同元素、同数值的护盾（叠放规则见 elementshields.js）
+   */
+  useTile(tile, target) {
+    if (this.busy || this.over || this.rolling || !tile || tile.removed || !tile.el) return;
+    if (this.tiles.filter((item) => !item.removed).length <= 1) {
+      this.popDamage(0, tile.el, "fx-shot", 1, "至少保留 1 块");
+      return;
+    }
+
+    const info = { level: tile.level, value: tile.value, element: tile.element || null };
+    tile.removed = true;
+    this.tiles = this.tiles.filter((item) => item !== tile);
+    tile.el.remove();
+
+    Blessings.resetAttackCombo(this);
+    if (target === "monster") {
+      this.hitMonster([{ amount: info.value, element: info.element }]);
+    } else if (target === "shield" && !this.over) {
+      this.addElementShield(info.element, info.value);
+    }
+    this.onUseTile(info, target);
+    TutorialGuide.notify("eliminate");
+    if (TutorialGuide.isActive()) TutorialGuide.refreshFocus();
+  },
+
+  /**
+   * 使用方块的额外效果（待设计）。
+   * @param {{ level: number, value: number, element: string|null }} info 被使用方块的等级、数值与元素
+   * @param {"monster"|"shield"} target 拖到了哪里
+   */
+  onUseTile(info, target) {},
+
+  // ---------- 跨波次保留盘面 ----------
+
+  /** 击败怪物进入下一波前记录盘面，下一波原样恢复 */
+  captureBoard() {
+    this.boardCarry = this.tiles
+      .filter((tile) => !tile.removed)
+      .map((tile) => ({
+        row: tile.row,
+        col: tile.col,
+        level: tile.level,
+        element: tile.element
+      }));
+  },
+
+  restoreBoard() {
+    const carry = this.boardCarry;
+    if (!carry) return;
+    this.boardCarry = null;
+    this.cancelDrag();
+    this.tiles.forEach((tile) => {
+      if (tile.el) tile.el.remove();
+    });
+    this.tiles = [];
+    if (this.layer) this.layer.innerHTML = "";
+    carry.forEach((tile) => {
+      this.addTileAt(tile.row, tile.col, tile.level, tile.element);
+    });
+    this.tiles.forEach((tile) => {
+      tile.isNew = false;
+    });
   }
 };
 

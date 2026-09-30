@@ -64,7 +64,7 @@
             </p>
             <p class="monster-curses" id="monster-curses" hidden></p>
             <p class="attack-line" id="monster-attack-line">
-              <span id="monster-attack-cd">还剩 0 次</span>
+              <span class="attack-cd" id="monster-attack-cd">0 回合后攻击</span>
               <span class="attack-dot">·</span>
               <span>伤害 <strong id="monster-attack-dmg">0</strong></span>
             </p>
@@ -74,11 +74,15 @@
         <div class="game-lower" id="game-lower">
           <div class="player-zone player-zone-stats" id="player-zone-stats">
             <div class="hp-row player-hp">
-              <span>你的生命</span>
+              <span class="player-label"><b class="player-level">Lv<em id="player-level">1</em></b>生命</span>
               <div class="hp-bar"><i id="player-hp-fill"></i></div>
               <strong id="player-hp-text">100</strong>
+              <span class="player-guard" title="元素护盾：左边的最先挨打">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 20 5V11C20 16.3 16.6 20.4 12 22 7.4 20.4 4 16.3 4 11V5Z"/></svg>
+                <span class="guard-list" id="player-guard-list"><em class="guard-empty">0</em></span>
+              </span>
             </div>
-            <p class="settle-line" id="settle-line">再过 <strong id="settle-left">3</strong> 回合结算伤害</p>
+            <p class="settle-line" id="settle-line"><span class="settle-text">拖到怪物攻击，拖到血条加盾<span class="settle-next" id="settle-next"></span></span><span class="settle-notice">本轮元素已用完，即将刷新元素顺序</span></p>
           </div>
 
           <div class="player-zone player-zone-stage" id="player-zone-stage">
@@ -105,7 +109,7 @@
 
           <div class="player-zone player-zone-actions" id="player-zone-actions">
             <button type="button" class="tab-btn" data-tab="blessings" id="tab-blessings">祝福</button>
-            <button type="button" class="tab-btn is-active" data-tab="board" id="tab-board">战斗盘</button>
+            <button type="button" class="tab-btn is-active" data-tab="board" id="tab-board" disabled aria-current="page">战斗盘</button>
             <button type="button" class="tab-btn" data-tab="items" id="tab-items">道具</button>
           </div>
         </div>
@@ -158,6 +162,10 @@
 
   <script src="js/elements.js"></script>
   <script src="js/stats.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/blocks.js"></script>
+  <script src="js/blockspawn.js"></script>
+  <script src="js/elementshields.js"></script>
   <script src="js/blessings.js"></script>
   <script src="js/curses.js"></script>
   <script src="js/monsters.js"></script>

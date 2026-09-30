@@ -355,13 +355,21 @@ body.is-menu #app {
 
 .settle-line {
   margin: 0;
+  height: 20px;
+  line-height: 20px;
+  white-space: nowrap;
   color: #111;
   font-size: 13px;
   font-weight: 700;
 }
 
-.settle-line.is-soon {
-  text-decoration: underline;
+.settle-next .element-badge {
+  box-sizing: border-box;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 11px;
+  vertical-align: middle;
 }
 
 /* 视口裁切：三页横滑不得把整页撑宽 */
@@ -410,7 +418,8 @@ body.is-menu #app {
 
 .stage-panel[data-panel="board"] {
   padding: 0 8px;
-  align-items: stretch;
+  align-items: center;
+  justify-content: center;
 }
 
 .stage-panel[data-panel="blessings"],
@@ -422,7 +431,6 @@ body.is-menu #app {
   padding-top: 4px;
   padding-bottom: 4px;
 }
-
 .stage-empty {
   margin: auto;
   text-align: center;
@@ -507,10 +515,11 @@ body.is-menu #app {
 .tab-btn.is-active {
   background: #111;
   color: #fff;
+  cursor: default;
 }
 
-.tab-btn:hover,
-.tab-btn:focus-visible {
+.tab-btn:not(:disabled):hover,
+.tab-btn:not(:disabled):focus-visible {
   filter: brightness(0.97);
 }
 
@@ -519,12 +528,69 @@ body.is-menu #app {
   max-width: 100%;
   margin: 0;
   padding: 0 2px;
+  grid-template-columns: 72px 1fr 34px auto;
+}
+
+.player-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.player-level {
+  padding: 0 5px;
+  border: 1.5px solid #111;
+  border-radius: 999px;
+  color: #111;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.player-level em,
+.player-guard em {
+  font-style: normal;
+}
+
+.player-guard {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 34px;
+  color: #111;
+  font-weight: 800;
+}
+
+/* 元素护盾列表：左边第一个最先挨打 */
+.guard-list {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.guard-chip.element-badge {
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 11px;
+}
+
+.guard-chip:first-child {
+  box-shadow: 0 0 0 1.5px #fff, 0 0 0 3px #111;
+}
+
+.player-guard svg {
+  width: 14px;
+  height: 14px;
+  fill: #d7dde4;
+  stroke: #111;
+  stroke-width: 2;
 }
 
 .game-lower .board {
-  width: 100%;
-  height: 100%;
-  aspect-ratio: auto;
+  width: auto;
+  height: auto;
+  aspect-ratio: 1;
 }
 
 .game-hud {
@@ -673,9 +739,14 @@ body.is-menu #app {
 
 .attack-line {
   margin-top: 4px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #111;
   font-size: 14px;
   font-weight: 700;
+  line-height: 20px;
 }
 
 .monster-element {
@@ -742,22 +813,72 @@ body.is-menu #app {
 .element-badge[data-element="earth"] { background: #f2c94c; color: #111; border-color: #9a7b12; }
 .element-badge[data-element="wind"] { background: #27ae60; color: #fff; border-color: #146c3a; }
 
-.tile-value {
+/* 方块图标：宝剑方块显示当前攻击元素图标（底色随元素），护盾保持默认白底 + 灰色盾面 */
+.tile-icon {
   position: relative;
   z-index: 1;
-  color: #fff;
-  -webkit-text-stroke: 2px #000;
-  paint-order: stroke fill;
-  text-shadow:
-    -1px 0 #000,
-    1px 0 #000,
-    0 -1px #000,
-    0 1px #000,
-    -1px -1px #000,
-    1px -1px #000,
-    -1px 1px #000,
-    1px 1px #000;
+  width: var(--icon-size, 50%);
+  height: var(--icon-size, 50%);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
 }
+
+.tile-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: var(--icon-fill, #fff);
+  stroke: #111;
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+
+.tile-icon .tile-icon-line {
+  fill: none;
+  stroke: #111;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+
+/* 风图标是线条：黑色粗线打底 + 细线上色，模拟描边 */
+.tile-icon .tile-icon-wind {
+  fill: none;
+  stroke: #111;
+  stroke-width: 4.6;
+  stroke-linecap: round;
+}
+
+.tile-icon .tile-icon-wind.is-core {
+  stroke: var(--icon-fill, #fff);
+  stroke-width: 2.2;
+}
+
+.tile-level {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  z-index: 2;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border: 1.5px solid #111;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 19px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* 等级只用图标尺寸 + 右上角数字区分，不加额外颜色，避免和元素色混淆（data-tier = min(等级, 5)） */
+.tile[data-tier="1"] { --icon-size: 46%; }
+.tile[data-tier="2"] { --icon-size: 56%; }
+.tile[data-tier="3"] { --icon-size: 64%; }
+.tile[data-tier="4"] { --icon-size: 71%; }
+.tile[data-tier="5"] { --icon-size: 77%; }
 
 .tile-advantage {
   position: absolute;
@@ -813,9 +934,31 @@ body.is-menu #app {
   transform: translateY(0.5px);
 }
 
-.attack-line.is-soon {
-  color: #111;
-  text-decoration: underline;
+.attack-cd {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+}
+
+.attack-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: #111;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+
+.attack-line.is-soon .attack-icon {
+  animation: attack-icon-shake 0.9s ease-in-out infinite;
+}
+
+@keyframes attack-icon-shake {
+  0%, 60%, 100% { transform: none; }
+  70% { transform: translateX(-2px) rotate(-8deg); }
+  80% { transform: translateX(2px) rotate(8deg); }
+  90% { transform: translateX(-1px) rotate(-4deg); }
 }
 
 .attack-line strong {
@@ -1004,7 +1147,8 @@ body.is-menu #app {
   display: grid;
   place-items: center;
   border-radius: inherit;
-  background: rgba(255, 255, 255, 0.85);
+  background: #fff;
+  box-shadow: inset 0 0 0 2px #111;
   animation: slot-in 180ms ease;
   transition: opacity 200ms ease;
 }
@@ -1033,7 +1177,8 @@ body.is-menu #app {
 
 .slot-strip {
   transition-property: transform;
-  transition-timing-function: cubic-bezier(0.12, 0.8, 0.22, 1);
+  transition-timing-function: cubic-bezier(0.3, 0.7, 0.4, 1);
+  transition-timing-function: linear(0, 0.75 60%, 0.859 70%, 0.938 80%, 0.984 90%, 1);
 }
 
 .slot-cell {
@@ -1048,6 +1193,44 @@ body.is-menu #app {
   font-size: 18px;
 }
 
+/* 一轮元素用完后、老虎机出现前：提示行换成「即将刷新元素顺序」，不遮挡战斗盘 */
+.settle-notice {
+  display: none;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 20px;
+}
+
+.settle-line.is-refreshing .settle-text {
+  display: none;
+}
+
+/* 弹出后闪两下吸引注意，老虎机出现前先淡出 */
+.settle-line.is-refreshing .settle-notice {
+  display: inline-block;
+  animation: settle-notice-in 260ms ease, settle-notice-pulse 520ms ease-in-out 260ms 2;
+  transition: opacity 300ms ease;
+}
+
+.settle-line.is-refresh-leaving .settle-notice {
+  opacity: 0;
+}
+
+@keyframes settle-notice-in {
+  0% { opacity: 0; transform: scale(0.85); }
+  60% { opacity: 1; transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+@keyframes settle-notice-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
 @keyframes slot-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -1058,22 +1241,35 @@ body.is-menu #app {
   pointer-events: none;
 }
 
-.tile.is-aimed {
-  border-color: #111 !important;
-  box-shadow: 0 0 0 3px #111;
-  z-index: 4;
+/* 拖动方块：原位置变淡，残影跟着手指走 */
+.tile.is-dragging {
+  opacity: 0.3;
 }
 
-.tile[data-value="128"],
-.tile[data-value="256"],
-.tile[data-value="512"] { font-size: 26px; }
+.tile-ghost {
+  position: fixed;
+  z-index: 60;
+  margin: 0;
+  pointer-events: none;
+  transition: none;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+}
 
-.tile[data-value="1024"],
-.tile[data-value="2048"] { font-size: 22px; }
+.tile-ghost.is-dropped {
+  transition: transform 180ms ease, opacity 180ms ease;
+  opacity: 0;
+}
 
-.tile[data-value="4096"],
-.tile[data-value="8192"] { font-size: 20px; }
+/* 拖到目标上方时高亮：怪物 = 攻击，血条 = 加护盾 */
+.monster-circle.is-drop-target {
+  box-shadow: 0 0 0 4px #111, 0 0 0 9px rgba(17, 17, 17, 0.18);
+}
 
+.player-hp.is-drop-target {
+  border-radius: 10px;
+  background: rgba(17, 17, 17, 0.08);
+  box-shadow: 0 0 0 2px #111;
+}
 .upgrade-title {
   font-size: 34px;
   margin: 8px 0 6px;
@@ -1471,11 +1667,6 @@ body.is-hurt .game-wrap {
 @media (max-width: 520px) {
   .panel { padding: 28px 18px 22px; }
   .tile { font-size: 26px; border-radius: 12px; }
-  .tile[data-value="128"],
-  .tile[data-value="256"],
-  .tile[data-value="512"] { font-size: 20px; }
-  .tile[data-value="1024"],
-  .tile[data-value="2048"] { font-size: 16px; }
 }
 
 /* 新手引导：黑遮罩 + 镂空聚焦 */

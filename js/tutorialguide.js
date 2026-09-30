@@ -15,49 +15,42 @@ const TutorialGuide = {
   STEPS: [
     {
       id: "move",
-      text: "【试玩关】先滑动一次。数字相同的方块撞在一起会合成更大的数字。",
+      text: "【试玩关】先滑动一次。两个同等级的方块撞在一起会合成高一级的方块。",
       focus: "board",
       wait: "move",
       tipPos: "top"
     },
     {
       id: "dirs",
-      text: "每次结算伤害都带一种元素：每 4 次攻击里，水、火、土、风各出现一次，顺序随机。",
+      text: "方块合成时才会获得元素：每次有合成的滑动，合成出的方块变成下一个元素；每 4 次合成里水、火、土、风各出现一次，顺序由抽取决定。",
       focus: "board",
       wait: "next",
       tipPos: "top"
     },
     {
       id: "monster",
-      text: "看这里：这个圆标就是怪物的属性（水/火/土/风）。每隔几个回合，场上所有方块的数字会加起来打它一次；这次攻击的元素克制它，伤害 2 倍，被它克制则只有半倍。",
+      text: "看这里：这个圆标就是怪物的属性（水/火/土/风）。把方块拖到怪物身上，就用它的数值和元素打一次；拖到血条上则变成同元素的护盾。攻击的元素克制它，伤害 2 倍，被它克制则只有半倍；怪物克制你的护盾时，护盾消耗也翻倍。",
       focus: "monster-element",
       wait: "next",
       tipPos: "bottom"
     },
     {
       id: "advantage",
-      text: "方块的颜色就是下一次攻击的元素；左上角 ▲ 表示克制怪物，▼ 表示被克制。",
+      text: "方块的颜色就是它的元素；左上角 ▲ 表示克制怪物，▼ 表示被克制。",
       focus: "board",
       wait: "next",
       tipPos: "top"
     },
     {
       id: "actions",
-      text: "这里是怪物出手倒计时：你每完成一次滑动或消除（一个回合），次数就减 1；减到 0 它会反击。试玩里怪物先不会真的打你。",
+      text: "这里是怪物出手倒计时：你每滑动一次（一个回合），次数就减 1，拖动使用方块不算；减到 0 它会反击。试玩里怪物先不会真的打你。",
       focus: "attack",
       wait: "next",
       tipPos: "bottom"
     },
     {
-      id: "select",
-      text: "点一下某个数字块，选中它（会出现加粗描边）。",
-      focus: "tile",
-      wait: "select",
-      tipPos: "top"
-    },
-    {
       id: "eliminate",
-      text: "再点同一块，把它消除，腾出格子。消除也算一个回合。试玩里怪物不掉血，分数也不算进正式纪录。",
+      text: "把一个方块拖到怪物身上攻击，或拖到血条上加护盾。使用方块不算回合。试玩里怪物不掉血，分数也不算进正式纪录。",
       focus: "tile",
       wait: "eliminate",
       tipPos: "top"
@@ -189,8 +182,8 @@ const TutorialGuide = {
     if (step.focus === "monster-element") return document.getElementById("monster-element");
     if (step.focus === "attack") return document.getElementById("monster-attack-line");
     if (step.focus === "tile") {
-      const selected = GameScene.selected && GameScene.selected.el;
-      if (selected) return selected;
+      const dragging = GameScene.drag && GameScene.drag.tile && GameScene.drag.tile.el;
+      if (dragging) return dragging;
       return document.querySelector("#game-tiles .tile");
     }
     return document.getElementById("game-board");

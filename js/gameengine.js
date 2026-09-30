@@ -1,11 +1,12 @@
 /**
  * 2048 的纯规则：只负责“这些方块往哪走、谁和谁合成”，不画界面。
+ * 方块有种类（宝剑 / 护盾）和等级；同种类同等级才能合成，合成后等级 +1。
  * 行列数可变（默认 4×4，界面按战斗盘区域大小调用 setSize）；
  * 仅祝福等机制可通过 extraLocked 封锁格子。
  */
-const ElementsLib = typeof Elements !== "undefined"
-  ? Elements
-  : require("./elements.js").Elements;
+const BlocksLib = typeof Blocks !== "undefined"
+  ? Blocks
+  : require("./blocks.js").Blocks;
 
 const GameEngine = {
   ROWS: 4,
@@ -75,8 +76,8 @@ const GameEngine = {
       id: tile.id,
       row: tile.row,
       col: tile.col,
+      level: tile.level,
       value: tile.value,
-      // 原样带走元素，移动时绝不改；只有合成时才改
       element: tile.element,
       removed: false,
       merged: false,
@@ -104,15 +105,13 @@ const GameEngine = {
           ? this.tileAt(tiles, target.nextRow, target.nextCol)
           : null;
 
-        if (next && next.value === tile.value && !next.merged) {
-          const fromElement = tile.element;
-          const toElement = next.element;
+        if (next && BlocksLib.canMerge(next, tile) && !next.merged) {
           tile.removed = true;
           tile.row = next.row;
           tile.col = next.col;
-          next.value *= 2;
-          // 属性由滑动方向在界面层统一覆盖；引擎里只先保留目标格
-          next.element = toElement || fromElement;
+          next.level += 1;
+          next.value = BlocksLib.valueFor(next.level);
+          next.element = next.element || tile.element;
           next.merged = true;
           next.justMerged = true;
           gained += next.value;
@@ -139,16 +138,17 @@ const GameEngine = {
       ];
       for (const [row, col] of neighbors) {
         const other = this.inBounds(row, col) ? this.tileAt(live, row, col) : null;
-        if (other && other.value === tile.value) return true;
+        if (other && BlocksLib.canMerge(other, tile)) return true;
       }
     }
     return false;
   },
 
-  gridValues(tiles) {
+  /** 调试 / 测试用：每格写方块等级，空格为 0 */
+  gridLevels(tiles) {
     const grid = Array.from({ length: this.ROWS }, () => Array(this.COLS).fill(0));
     tiles.forEach((tile) => {
-      if (!tile.removed) grid[tile.row][tile.col] = tile.value;
+      if (!tile.removed) grid[tile.row][tile.col] = tile.level;
     });
     return grid;
   }

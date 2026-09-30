@@ -11,7 +11,7 @@ const ResultScene = {
     document.getElementById("result-title").textContent = isRecord ? "冲得更远了！" : "你倒下了";
     document.getElementById("result-desc").textContent = isRecord
       ? "这是目前到达的最高波次。还能再往前冲。"
-      : "生命耗尽，怪物把你打停了。场上方块越多、数字越大，每次结算打得越痛。";
+      : "生命耗尽，怪物把你打停了。方块合得越高级，拖去攻击越痛；拖到血条上的护盾要选怪物克制不了的元素。";
     document.getElementById("result-tile").textContent = `第 ${wave} 波`;
     document.getElementById("result-time").textContent = App.formatTime(data.surviveSec || 0);
     document.getElementById("result-best").textContent = String(data.best || App.best);
